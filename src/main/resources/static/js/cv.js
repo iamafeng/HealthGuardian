@@ -178,12 +178,17 @@ const CV = {
         // 可视化红色闪烁
         document.body.style.boxShadow = "inset 0 0 80px rgba(255, 71, 87, 0.6)";
         setTimeout(() => document.body.style.boxShadow = "none", 800);
-        
+
+        // 自动触发眼部+颈部调息序列
+        if (typeof Workout !== 'undefined') {
+            setTimeout(() => Workout.start('eye'), 1200);
+        }
+
         // 发送 webhook 到手机
         if (App.state && App.state.secretKey) {
             API.post('/api/notify/webhook', {
                 secretKey: App.state.secretKey,
-                message: `【机体告警】AI 行为模型侦测到违规坐姿（探颈/僵死前倾）。颈椎承载超限 150%，强烈建议您立刻后仰并执行 30 秒的微级调息协议！`
+                message: `【机体告警】AI 行为模型侦测到违规坐姿（探颈/僵死前倾）。颈椎承载超限 150%，强烈建议您立刻后仰并执行调息协议！`
             });
         }
     }

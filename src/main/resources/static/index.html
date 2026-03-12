@@ -171,11 +171,48 @@
     </div>
 
     <div id="workout-modal" class="modal-overlay">
-        <div class="modal-card">
-            <h2>🧘 调息引导</h2>
-            <img id="workout-img" style="width:180px; margin:20px auto; display:block; border-radius:15px" src="">
-            <button id="workout-btn" class="btn-action" style="width:100%" onclick="App.confirmWorkout()"
-                disabled>保持动作...</button>
+        <div class="modal-card" style="padding:28px; width:380px">
+            <!-- 标题 + 步骤徽章 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+                <h2 style="margin:0">🧘 调息协议</h2>
+                <div class="workout-step-badge">
+                    <span id="workout-step-cur">1</span><span style="opacity:0.5">/</span><span id="workout-step-total">3</span>
+                </div>
+            </div>
+
+            <!-- 步骤指示点 -->
+            <div id="workout-step-dots" style="display:flex; justify-content:center; gap:10px; margin-bottom:18px"></div>
+
+            <!-- 动作图示 + 环形倒计时 -->
+            <div style="display:flex; justify-content:center; align-items:center; gap:18px; margin-bottom:18px">
+                <img id="workout-img" style="width:110px; height:110px; border-radius:14px; border:1px solid rgba(0,242,254,0.15); background:#0f172a;" src="" alt="workout">
+                <div style="position:relative; width:88px; height:88px; flex-shrink:0">
+                    <svg width="88" height="88" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+                        <circle id="workout-ring-progress" cx="50" cy="50" r="42" fill="none"
+                            stroke="var(--primary)" stroke-width="8" stroke-linecap="round"
+                            stroke-dasharray="263.9" stroke-dashoffset="0"
+                            transform="rotate(-90 50 50)"/>
+                    </svg>
+                    <span id="workout-countdown" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:1.5rem; font-weight:800; font-family:var(--font-mono); color:var(--primary); line-height:1">30</span>
+                </div>
+            </div>
+
+            <!-- 动作信息 -->
+            <div class="workout-info-box">
+                <div id="workout-name" style="font-size:1rem; font-weight:800; color:var(--primary); margin-bottom:4px"></div>
+                <div id="workout-target" style="font-size:0.65rem; color:var(--text-dim); margin-bottom:8px"></div>
+                <div id="workout-desc" style="font-size:0.8rem; color:var(--text-main); line-height:1.5; margin-bottom:6px"></div>
+                <div id="workout-breath" style="font-size:0.75rem; color:var(--secondary)"></div>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div style="display:flex; gap:10px">
+                <button class="btn-outline" style="flex:1; margin:0; padding:10px; font-size:0.8rem"
+                    onclick="Workout.skip()">⏭ 跳过</button>
+                <button id="workout-btn" class="btn-action" style="flex:2; padding:10px"
+                    onclick="Workout.next()" disabled>准备中...</button>
+            </div>
         </div>
     </div>
 

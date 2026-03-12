@@ -183,13 +183,13 @@ const App = {
     },
 
     tryComplete(type, btn) {
-        if (type === 'SEDENTARY') UI.modal.showWorkout();
+        if (type === 'SEDENTARY') Workout.start();
         else this.completeTask(type, btn);
     },
 
     confirmWorkout() {
-        UI.modal.hide('workout-modal');
-        this.completeTask('SEDENTARY');
+        // 已由 Workout 模块接管，保留此方法供向后兼容
+        Workout.next();
     },
 
     // --- 专注逻辑 ---
@@ -460,5 +460,175 @@ const API = {
     async get(u, p = {}) { const q = new URLSearchParams(p).toString(); return (await fetch(`${u}?${q}`)).json(); },
     async post(u, p = {}) { const q = new URLSearchParams(p).toString(); const r = await fetch(`${u}?${q}`, { method: 'POST' }); const t = await r.text(); try { return JSON.parse(t); } catch { return t; } }
 };
+
+// ─── Workout 调息协议模块 ───────────────────────────────────────────────────
+const Workout = {
+    _interval: null,
+    sequence: [],
+    currentStep: 0,
+    timeLeft: 0,
+
+    // 动作数据库
+    exercises: {
+        neck:     { name: '颈部拉伸', svg: 'neck.svg',     duration: 30, target: '颈椎 & 斜方肌',     desc: '缓慢左右转动颈部，充分感受侧颈拉伸',    breath: '吸气向左，呼气回中，再吸气向右' },
+        chest:    { name: '扩胸开肩', svg: 'chest.svg',    duration: 30, target: '胸大肌 & 肩袖肌群',  desc: '双臂向后展开，挺胸抬头，打开胸腔',      breath: '吸气展肩，呼气内收，重复' },
+        squat:    { name: '原地深蹲', svg: 'squat.svg',    duration: 30, target: '下肢 & 核心肌群',    desc: '双脚肩宽，缓慢蹲起，激活下肢血液循环',  breath: '下蹲吸气，起立呼气' },
+        shoulder: { name: '肩部环绕', svg: 'shoulder.svg', duration: 25, target: '三角肌 & 冈上肌',   desc: '双肩同时向前画大圆，再反向画圆舒缓',    breath: '配合肩部节奏均匀呼吸' },
+        wrist:    { name: '手腕舒展', svg: 'wrist.svg',    duration: 20, target: '腕屈肌 & 腕伸肌',   desc: '双手腕交替向内向外画圆，缓解键盘疲劳',  breath: '自然呼吸，保持手臂放松' },
+        eyes:     { name: '眼部放松', svg: 'eyes.svg',     duration: 20, target: '眼部肌群 & 视神经',  desc: '闭眼缓慢画圆，再极目远眺窗外 10 秒',   breath: '深吸气闭眼，呼气睁眼远望' },
+        back:     { name: '脊柱扭转', svg: 'back.svg',     duration: 30, target: '竖脊肌 & 腰方肌',   desc: '坐直后双臂平举，缓缓向两侧扭转上身',   breath: '呼气时加深扭转幅度，吸气回中' },
+    },
+
+    // 预设序列
+    sequences: {
+        standard: ['neck', 'chest', 'squat'],        // 标准混合
+        desk:     ['neck', 'shoulder', 'wrist'],      // 久坐办公
+        eye:      ['eyes', 'neck', 'shoulder'],       // CV 探颈触发 / 眼睛疲劳
+        full:     ['squat', 'chest', 'back', 'neck'], // 全身激活
+    },
+
+    /**
+     * 启动调息序列
+     * @param {string} [sequenceName] 指定序列名；不传则按时段自动选择
+     */
+    start(sequenceName) {
+        if (!sequenceName) {
+            const h = new Date().getHours();
+            sequenceName = h >= 8 && h < 12 ? 'full' : h >= 12 && h < 18 ? 'desk' : 'standard';
+        }
+        this.sequence = this.sequences[sequenceName] || this.sequences.standard;
+        this.currentStep = 0;
+        UI.modal.show('workout-modal');
+        this._loadStep();
+    },
+
+    _loadStep() {
+        const exKey = this.sequence[this.currentStep];
+        const ex = this.exercises[exKey];
+        const total = this.sequence.length;
+        const step = this.currentStep;
+
+        // 步骤指示
+        document.getElementById('workout-step-cur').innerText = step + 1;
+        document.getElementById('workout-step-total').innerText = total;
+        this._renderDots(step, total);
+
+        // 动作内容
+        document.getElementById('workout-img').src = `/workout/${ex.svg}`;
+        document.getElementById('workout-name').innerText = ex.name;
+        document.getElementById('workout-target').innerText = '🎯 ' + ex.target;
+        document.getElementById('workout-desc').innerText = ex.desc;
+        document.getElementById('workout-breath').innerText = '🫁 ' + ex.breath;
+
+        // 按钮文字
+        const btn = document.getElementById('workout-btn');
+        btn.disabled = true;
+        btn.innerText = step < total - 1 ? '下一个 →' : '完成打卡 ✅';
+
+        // 重置环形进度条（无动画跳回满格）
+        const ring = document.getElementById('workout-ring-progress');
+        if (ring) {
+            ring.style.transition = 'none';
+            ring.style.strokeDashoffset = '0';
+            // 下一帧再恢复动画，避免首帧跳变
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                ring.style.transition = 'stroke-dashoffset 1s linear';
+            }));
+        }
+
+        this.timeLeft = ex.duration;
+        this._tick(ex.duration);
+    },
+
+    _tick(total) {
+        if (this._interval) clearInterval(this._interval);
+        const circumference = 263.9;
+
+        const update = () => {
+            document.getElementById('workout-countdown').innerText = this.timeLeft;
+            const ring = document.getElementById('workout-ring-progress');
+            if (ring) ring.style.strokeDashoffset = circumference * (1 - this.timeLeft / total);
+
+            if (this.timeLeft <= 0) {
+                clearInterval(this._interval);
+                document.getElementById('workout-btn').disabled = false;
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            } else {
+                this.timeLeft--;
+            }
+        };
+
+        update(); // 立即渲染第一帧
+        this._interval = setInterval(update, 1000);
+    },
+
+    /** 跳过当前动作，直接进入下一步 */
+    skip() {
+        if (this._interval) clearInterval(this._interval);
+        this._advance();
+    },
+
+    /** 当前动作完成，进入下一步（或结束） */
+    next() {
+        if (this._interval) clearInterval(this._interval);
+        this._advance();
+    },
+
+    _advance() {
+        this.currentStep++;
+        if (this.currentStep >= this.sequence.length) {
+            // 全部完成
+            UI.modal.hide('workout-modal');
+            App.completeTask('SEDENTARY');
+        } else {
+            // 组间休息 3 秒
+            this._showRest();
+        }
+    },
+
+    _showRest() {
+        document.getElementById('workout-btn').disabled = true;
+        document.getElementById('workout-name').innerText = '组间休息';
+        document.getElementById('workout-target').innerText = '';
+        document.getElementById('workout-desc').innerText = '放松，准备下一个动作...';
+        document.getElementById('workout-breath').innerText = '🫁 深呼吸，放松全身';
+
+        let rest = 3;
+        const circumference = 263.9;
+
+        const ring = document.getElementById('workout-ring-progress');
+        if (ring) {
+            ring.style.transition = 'none';
+            ring.style.strokeDashoffset = '0';
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                ring.style.transition = 'stroke-dashoffset 1s linear';
+            }));
+        }
+
+        if (this._interval) clearInterval(this._interval);
+        this._interval = setInterval(() => {
+            document.getElementById('workout-countdown').innerText = rest;
+            if (ring) ring.style.strokeDashoffset = circumference * (1 - rest / 3);
+            rest--;
+            if (rest < 0) {
+                clearInterval(this._interval);
+                this._loadStep();
+            }
+        }, 1000);
+    },
+
+    _renderDots(current, total) {
+        document.getElementById('workout-step-dots').innerHTML =
+            Array.from({ length: total }, (_, i) =>
+                `<div class="workout-dot ${i < current ? 'done' : i === current ? 'active' : ''}"></div>`
+            ).join('');
+    },
+
+    stop() {
+        if (this._interval) clearInterval(this._interval);
+        UI.modal.hide('workout-modal');
+    }
+};
+// ────────────────────────────────────────────────────────────────────────────
 
 App.init();

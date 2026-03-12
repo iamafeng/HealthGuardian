@@ -28,12 +28,28 @@ const CV = {
 
     async start() {
         if (!this.video || !this.canvas) return;
+
+        // ── 前置检查：确认 AI 库已成功加载 ──────────────────────────────────
+        if (typeof tf === 'undefined') {
+            document.getElementById('cv-overlay-text').innerText = "TensorFlow 库未加载";
+            document.getElementById('cv-start').disabled = false;
+            UI.toast('🌐 TF.js 未加载，请检查网络连接后刷新页面（如使用广告拦截插件，请将本站加入白名单）', 'error');
+            return;
+        }
+        if (typeof poseDetection === 'undefined') {
+            document.getElementById('cv-overlay-text').innerText = "姿态检测库未加载";
+            document.getElementById('cv-start').disabled = false;
+            UI.toast('🌐 姿态检测库未加载，请检查网络连接后刷新页面', 'error');
+            return;
+        }
+
         document.getElementById('cv-overlay-text').innerText = "加载神经常规网络...";
         document.getElementById('cv-start').disabled = true;
         
         try {
             if (!this.detector) {
-                // 加载 MoveNet 模型
+                // 加载 MoveNet 模型（需能访问 storage.googleapis.com）
+                document.getElementById('cv-overlay-text').innerText = "正在下载 AI 模型（约 6MB）...";
                 await tf.setBackend('webgl');
                 this.detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
                     modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
@@ -68,9 +84,24 @@ const CV = {
             
         } catch (e) {
             console.error("CV Engine Error:", e);
-            document.getElementById('cv-overlay-text').innerText = "传感器链路异常";
+            // 根据错误类型给出有针对性的提示
+            let errMsg = '核心视觉引擎启动失败';
+            if (e && (e.name === 'NotAllowedError' || (e.message && e.message.includes('Permission')))) {
+                errMsg = '摄像头权限被拒绝 🔒，请在浏览器地址栏点击锁图标允许摄像头访问后重试';
+            } else if (e && e.name === 'NotFoundError') {
+                errMsg = '未检测到摄像头设备，请确认摄像头已连接';
+            } else if (e && (e.name === 'NotReadableError' || e.name === 'TrackStartError')) {
+                errMsg = '摄像头被其他程序占用，请关闭其他使用摄像头的应用后重试';
+            } else if (e && e.message && (e.message.includes('webgl') || e.message.includes('WebGL'))) {
+                errMsg = 'WebGL 不可用，请使用支持 WebGL 的现代浏览器（Chrome / Edge 推荐）';
+            } else if (e && e.message && (e.message.includes('fetch') || e.message.includes('network') || e.message.includes('load'))) {
+                errMsg = '🌐 AI 模型下载失败（需访问 Google 服务）。如在大陆，请配置代理后重试，或使用桌面端（已内置本地模型）';
+            } else {
+                errMsg = `启动失败: ${e ? (e.message || e.toString()).slice(0, 60) : '未知错误'}`;
+            }
+            document.getElementById('cv-overlay-text').innerText = "传感器链路异常 ⚠️";
             document.getElementById('cv-start').disabled = false;
-            UI.toast('核心视觉引擎无法获取摄像头或模型加载失败', 'error');
+            UI.toast(errMsg, 'error');
         }
     },
 

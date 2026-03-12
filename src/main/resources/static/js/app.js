@@ -10,6 +10,7 @@ const Themes = {
         '--glass': 'rgba(255, 255, 255, 0.03)', '--glass-hover': 'rgba(255, 255, 255, 0.06)',
         '--border': 'rgba(255, 255, 255, 0.12)', '--text-main': '#f8fafc', '--text-dim': '#94a3b8',
         '--bg-gradient': 'radial-gradient(circle at 0% 0%, #0f172a 0%, #1e293b 100%)',
+        '--modal-bg': '#1e293b',
     },
     forest: {
         '--primary': '#10b981', '--secondary': '#34d399', '--success': '#22c55e',
@@ -17,6 +18,7 @@ const Themes = {
         '--glass': 'rgba(255, 255, 255, 0.04)', '--glass-hover': 'rgba(255, 255, 255, 0.07)',
         '--border': 'rgba(16, 185, 129, 0.15)', '--text-main': '#ecfdf5', '--text-dim': '#6ee7b7',
         '--bg-gradient': 'radial-gradient(circle at 0% 0%, #052e16 0%, #14532d 100%)',
+        '--modal-bg': '#0d2818',
     },
     ocean: {
         '--primary': '#f472b6', '--secondary': '#a78bfa', '--success': '#10b981',
@@ -24,13 +26,15 @@ const Themes = {
         '--glass': 'rgba(255, 255, 255, 0.04)', '--glass-hover': 'rgba(255, 255, 255, 0.07)',
         '--border': 'rgba(167, 139, 250, 0.15)', '--text-main': '#fdf2f8', '--text-dim': '#c4b5fd',
         '--bg-gradient': 'radial-gradient(circle at 0% 0%, #0c0a1a 0%, #1e1b4b 100%)',
+        '--modal-bg': '#110f2a',
     },
     light: {
         '--primary': '#2563eb', '--secondary': '#3b82f6', '--success': '#16a34a',
         '--warning': '#d97706', '--accent': '#dc2626', '--gold': '#ca8a04',
-        '--glass': 'rgba(0, 0, 0, 0.03)', '--glass-hover': 'rgba(0, 0, 0, 0.06)',
-        '--border': 'rgba(0, 0, 0, 0.1)', '--text-main': '#1e293b', '--text-dim': '#64748b',
+        '--glass': 'rgba(255, 255, 255, 0.7)', '--glass-hover': 'rgba(255, 255, 255, 0.85)',
+        '--border': 'rgba(0, 0, 0, 0.08)', '--text-main': '#1e293b', '--text-dim': '#64748b',
         '--bg-gradient': 'radial-gradient(circle at 0% 0%, #f8fafc 0%, #e2e8f0 100%)',
+        '--modal-bg': '#ffffff',
     }
 };
 
@@ -334,6 +338,8 @@ const App = {
         const vars = Themes[name] || Themes.cyber;
         const root = document.documentElement;
         Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
+        // 设置 body data-theme 属性，供 CSS 亮色主题覆盖规则使用
+        document.body.dataset.theme = name;
         document.querySelectorAll('.theme-btn[data-theme]').forEach(b => {
             b.classList.toggle('active', b.dataset.theme === name);
         });
@@ -423,7 +429,7 @@ h1{font-size:1.5rem;background:linear-gradient(to right,#00f2fe,#4facfe);-webkit
         }
         try {
             const data = await API.get('/api/partner/my-code', { secretKey: this.state.secretKey });
-            const partnerStats = await API.get('/api/partner/stats', { secretKey: this.state.secretKey });
+            const partnerStats = await API.get('/api/partner/stats', { myKey: this.state.secretKey });
             UI.renderPartnerModal(data, partnerStats);
             UI.modal.show('partner-modal');
         } catch (e) { UI.toast('加载失败，请重试', 'error'); }
@@ -703,7 +709,7 @@ const UI = {
                 <span style="font-size:0.75rem;color:var(--text-dim)">我的邀请码（用户名）：</span>
                 <span class="partner-code-box" onclick="navigator.clipboard.writeText('${data.code}'); UI.toast('已复制！', 'success')">${data.code} 📋</span>`;
         }
-        if (!partnerStats || partnerStats.length === 0) {
+        if (!partnerStats || !Array.isArray(partnerStats) || partnerStats.length === 0) {
             listEl.innerHTML = `<div style="color:var(--text-dim);font-size:0.8rem;text-align:center;padding:16px">还没有搭子，快去邀请好友吧！</div>`;
         } else {
             listEl.innerHTML = partnerStats.map(p => `
@@ -1025,61 +1031,107 @@ const Breathing = {
     }
 };
 
-// ─── 🎵 AmbientSound 环境音效模块 ──────────────────────────────────────────
+// ─── 🎵 AmbientSound 环境音效模块（多层滤波版）──────────────────────────────
 const AmbientSound = {
-    _ctx: null, _source: null, _gain: null, _type: null,
+    _ctx: null, _sources: [], _lfos: [], _gainNode: null, _type: null,
 
     _getCtx() {
         if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this._ctx.state === 'suspended') this._ctx.resume();
         return this._ctx;
+    },
+
+    // 生成指定类型噪音 Buffer（3 秒无缝循环）
+    _makeBuf(ctx, noiseType) {
+        const len = ctx.sampleRate * 3;
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        if (noiseType === 'white') {
+            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        } else { // pink
+            let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+            for (let i = 0; i < len; i++) {
+                const w = Math.random() * 2 - 1;
+                b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
+                b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
+                b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+                d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
+                b6=w*0.115926;
+            }
+        }
+        return buf;
+    },
+
+    // 创建噪音源 → 滤波器 → 增益节点，返回 src
+    _addLayer(ctx, noiseType, filterType, freq, Q, gainVal, destination) {
+        const src = ctx.createBufferSource();
+        src.buffer = this._makeBuf(ctx, noiseType);
+        src.loop = true;
+        const filt = ctx.createBiquadFilter();
+        filt.type = filterType; filt.frequency.value = freq;
+        if (Q != null) filt.Q.value = Q;
+        const g = ctx.createGain(); g.gain.value = gainVal;
+        src.connect(filt); filt.connect(g); g.connect(destination);
+        src.start();
+        this._sources.push(src);
+        return { src, filt, gain: g };
     },
 
     play(type) {
         this.stop();
         const ctx = this._getCtx();
-        this._gain = ctx.createGain();
-        this._gain.gain.value = 0.25;
-        this._gain.connect(ctx.destination);
-
-        const bufSize = 2 * ctx.sampleRate;
-        const buffer = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-        const out = buffer.getChannelData(0);
+        this._gainNode = ctx.createGain();
+        this._gainNode.connect(ctx.destination);
+        this._sources = []; this._lfos = [];
 
         if (type === 'white') {
-            for (let i = 0; i < bufSize; i++) out[i] = Math.random() * 2 - 1;
+            // ─── 纯净专注白噪音：白噪音 + 轻微高切（6kHz），减少刺耳感 ───
+            this._gainNode.gain.value = 0.15;
+            this._addLayer(ctx, 'white', 'lowpass', 6000, null, 1.0, this._gainNode);
+
         } else if (type === 'rain') {
-            // Brown noise (deeper, rain-like)
-            let last = 0;
-            for (let i = 0; i < bufSize; i++) {
-                const w = Math.random() * 2 - 1;
-                out[i] = (last + 0.02 * w) / 1.02;
-                last = out[i]; out[i] *= 3.5;
-            }
+            // ─── 自然雨声：三层混合 ─────────────────────────────────────────
+            this._gainNode.gain.value = 0.45;
+            // 层1：细雨嘶嘶声（白噪音 → 带通 ~2kHz）
+            this._addLayer(ctx, 'white', 'bandpass', 2000, 1.5, 0.55, this._gainNode);
+            // 层2：更细密的雨丝（白噪音 → 带通 ~4kHz，音量轻）
+            this._addLayer(ctx, 'white', 'bandpass', 4200, 1.0, 0.25, this._gainNode);
+            // 层3：雨打地面低沉声（粉红噪音 → 低通 ~350Hz）
+            this._addLayer(ctx, 'pink', 'lowpass', 350, null, 0.50, this._gainNode);
+            // LFO：缓慢起伏模拟雨势变化（0.07 Hz）
+            const lfo = ctx.createOscillator();
+            lfo.type = 'sine'; lfo.frequency.value = 0.07;
+            const lfoG = ctx.createGain(); lfoG.gain.value = 0.06;
+            lfo.connect(lfoG); lfoG.connect(this._gainNode.gain);
+            lfo.start(); this._lfos.push(lfo);
+
         } else if (type === 'cafe') {
-            // Pink noise (warm, cafe-like)
-            let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
-            for (let i = 0; i < bufSize; i++) {
-                const w = Math.random() * 2 - 1;
-                b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
-                b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
-                b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
-                out[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
-                b6=w*0.115926;
-            }
+            // ─── 咖啡馆氛围：三层模拟 ──────────────────────────────────────
+            this._gainNode.gain.value = 0.28;
+            // 层1：人群嗡嗡低鸣（粉红噪音 → 带通 ~600Hz，宽带）
+            this._addLayer(ctx, 'pink', 'bandpass', 600, 0.4, 0.65, this._gainNode);
+            // 层2：餐具碰撞 & 背景音轮廓（粉红 → 高通 ~3kHz，音量轻）
+            this._addLayer(ctx, 'pink', 'highpass', 3000, null, 0.12, this._gainNode);
+            // 层3：空调 / 咖啡机低频底鸣（粉红 → 低通 ~110Hz）
+            this._addLayer(ctx, 'pink', 'lowpass', 110, null, 0.38, this._gainNode);
+            // LFO：慢速波动模拟人群起伏（0.12 Hz）
+            const lfo2 = ctx.createOscillator();
+            lfo2.type = 'sine'; lfo2.frequency.value = 0.12;
+            const lfoG2 = ctx.createGain(); lfoG2.gain.value = 0.045;
+            lfo2.connect(lfoG2); lfoG2.connect(this._gainNode.gain);
+            lfo2.start(); this._lfos.push(lfo2);
         }
 
-        this._source = ctx.createBufferSource();
-        this._source.buffer = buffer;
-        this._source.loop = true;
-        this._source.connect(this._gain);
-        this._source.start();
         this._type = type;
         this._updateBtns();
-        UI.toast(`🎵 ${{'white':'白噪音','rain':'雨声','cafe':'咖啡馆'}[type]} 已开启`, 'success');
+        const labels = { white: '专注白噪音 🌊', rain: '自然雨声 🌧️', cafe: '咖啡馆氛围 ☕' };
+        UI.toast(`🎵 ${labels[type]} 已开启`, 'success');
     },
 
     stop() {
-        if (this._source) { try { this._source.stop(); } catch(e){} this._source = null; }
+        [...(this._sources || []), ...(this._lfos || [])].forEach(n => { try { n.stop(); } catch(e){} });
+        this._sources = []; this._lfos = [];
+        if (this._gainNode) { try { this._gainNode.disconnect(); } catch(e){} this._gainNode = null; }
         this._type = null;
         this._updateBtns();
     },

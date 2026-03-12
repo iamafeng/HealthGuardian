@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HealthGuardian</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- CV 引擎依赖: TF.js & MoveNet -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.21.0/dist/tf-converter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+</head>
+
+<body>
+    <div id="toast-container"></div>
+
+    <div class="layout">
+        <!-- 1. 侧边栏 -->
+        <div class="glass-card card-side">
+            <h2>⏱️ 专注协议</h2>
+            <div class="pomo-container">
+                <div id="pomo-timer">25:00</div>
+                <div style="display:flex; gap:12px; justify-content:center">
+                    <button id="pomo-start" class="btn-action" onclick="App.startPomo()">启动协议</button>
+                    <button id="pomo-stop" class="btn-action" style="background:var(--accent)" onclick="App.stopPomo()"
+                        disabled>中断</button>
+                </div>
+            </div>
+
+            <h2>👁️ 视觉监控 (CV)</h2>
+            <div class="cv-container" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 242, 254, 0.1); border-radius: 15px; padding: 15px; margin-bottom: 25px;">
+                <video id="cv-video" playsinline style="display:none"></video>
+                <div style="position:relative; width:100%; aspect-ratio:4/3; background:rgba(0,0,0,0.5); border-radius:10px; overflow:hidden; border: 1px solid rgba(0,242,254,0.2);">
+                    <canvas id="cv-canvas" style="width:100%; height:100%"></canvas>
+                    <div id="cv-overlay-text" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:var(--text-dim); font-size:0.8rem; text-align:center;">传感器待命中</div>
+                </div>
+                <div style="display:flex; gap:12px; justify-content:center; margin-top:10px">
+                    <button id="cv-start" class="btn-action" onclick="CV.start()" style="font-size:0.8rem">🔗 启动感知</button>
+                    <button id="cv-stop" class="btn-action" style="background:var(--accent); font-size:0.8rem" onclick="CV.stop()" disabled>挂起</button>
+                </div>
+            </div>
+
+            <h2>📡 指令中心</h2>
+            <div id="remind-list">正在初始化生物传感器...</div>
+
+            <button class="btn-outline" onclick="UI.modal.showBind()">
+                <span>👤 身份同步</span>
+            </button>
+            <button class="btn-outline" onclick="UI.modal.showWebhook()">
+                <span>🔔 推送与通知</span>
+            </button>
+            <div id="user-display" style="margin-top:20px; text-align:center; font-size:0.75rem; color:var(--text-dim)">
+                加载中...
+            </div>
+        </div>
+
+        <!-- 2. 主面板 -->
+        <div class="glass-card">
+            <div class="header-v3">
+                <div style="flex:1">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px">
+                        <span style="font-size:0.75rem; color:var(--text-dim); font-weight:700">NEURAL LINK:
+                            机体稳定性</span>
+                        <span id="hp-value" style="font-family:monospace; color:var(--primary)">100%</span>
+                    </div>
+                    <div class="hp-bar-container">
+                        <div id="hp-fill" class="hp-bar-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="system-monitor-msg" class="status-monitor-msg">
+                正在同步环境传感器数据...
+            </div>
+
+            <div class="stats-grid">
+                <div>
+                    <div class="stat-label">今日补给</div>
+                    <div id="stat-drink" class="stat-value" style="color:var(--primary)">0</div>
+                </div>
+                <div class="stat-divider"></div>
+                <div>
+                    <div class="stat-label">今日调息</div>
+                    <div id="stat-rest" class="stat-value" style="color:var(--secondary)">0</div>
+                </div>
+                <div class="stat-divider"></div>
+                <div>
+                    <div class="stat-label">专注时长</div>
+                    <div id="stat-focus" class="stat-value" style="color:var(--gold)">0m</div>
+                </div>
+            </div>
+            <div style="height:180px; margin-bottom:30px"><canvas id="weeklyChart"></canvas></div>
+            <div style="height:180px"><canvas id="hourlyChart"></canvas></div>
+        </div>
+
+        <!-- 3. 排行榜 -->
+        <div class="glass-card card-side">
+            <h2>🏆 全球功勋榜</h2>
+            <div id="leaderboard"></div>
+        </div>
+
+        <!-- 4. 成就墙 -->
+        <div class="glass-card ach-grid" id="achievements-container" style="grid-column: 1 / -1;"></div>
+    </div>
+
+    <!-- 弹窗组件 -->
+    <div id="welcome-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div style="font-size:3rem; margin-bottom:20px">🛰️</div>
+            <h2 style="justify-content:center">系统初始化</h2>
+            <p style="color:var(--text-dim); font-size:0.9rem; margin-bottom:30px">欢迎接入
+                HealthGuardian。<br>建立加密连接以开启效能守护。</p>
+            <button class="btn-action" style="width:100%; margin-bottom:15px" onclick="App.startFresh()">🆕
+                建立新身份</button>
+            <button class="btn-outline" onclick="UI.modal.showLogin()">🔐 召回旧身份</button>
+        </div>
+    </div>
+
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-card" style="text-align:left">
+            <h2 id="modal-title-auth">身份配置</h2>
+            <input type="text" id="auth-user" placeholder="接入代号 (用户名)">
+            <input type="password" id="auth-pwd" placeholder="验证密钥 (密码)">
+            <button class="btn-action" style="width:100%; margin-top:10px"
+                onclick="App.handleAuth(document.getElementById('auth-user').value, document.getElementById('auth-pwd').value)">确认执行</button>
+            <div style="text-align:center; margin-top:12px; font-size:0.8rem; color:var(--text-dim)">
+                <span id="auth-mode-hint"></span>
+                <a href="#" id="auth-mode-switch"
+                    onclick="UI.modal.toggleAuthMode(); return false;"
+                    style="color:var(--primary); text-decoration:none; margin-left:4px; font-weight:700;"></a>
+            </div>
+            <button class="btn-outline" onclick="UI.modal.hide('auth-modal')">返回</button>
+        </div>
+    </div>
+
+    <div id="webhook-modal" class="modal-overlay">
+        <div class="modal-card" style="text-align:left">
+            <h2>🔔 推送与通知</h2>
+            <p style="color:var(--text-dim); font-size:0.8rem; margin-bottom:20px">配置告警同步渠道及本地通知。</p>
+            <input type="text" id="auth-webhook" placeholder="粘贴 Webhook 链接 (如钉钉/飞书)">
+            <label style="display:flex; align-items:center; gap:8px; margin-top:15px; font-size:0.85rem; color:var(--text-dim)">
+                <input type="checkbox" id="webhook-enable-cb" checked> 允许触发远端 Webhook 推送
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:0.85rem; color:var(--text-dim)">
+                <input type="checkbox" id="desktop-notify-cb" checked> 允许桌面端及浏览器弹窗通知
+            </label>
+            <div style="margin-top:10px; margin-bottom:20px">
+                <button id="notify-perm-btn" class="btn-outline"
+                    style="font-size:0.75rem; padding:7px 14px; width:100%"
+                    onclick="App.requestBrowserNotify()">🔔 开启浏览器推送权限</button>
+                <div id="notify-perm-status" style="font-size:0.7rem; color:var(--text-dim); margin-top:6px; text-align:center; line-height:1.4"></div>
+            </div>
+            <button class="btn-action" style="width:100%"
+                onclick="App.saveWebhook(document.getElementById('auth-webhook').value, document.getElementById('webhook-enable-cb').checked, document.getElementById('desktop-notify-cb').checked)">保存配置</button>
+            <button class="btn-outline" onclick="UI.modal.hide('webhook-modal')">返回</button>
+        </div>
+    </div>
+
+    <div id="config-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h2>⚙️ 周期调整</h2>
+            <input type="number" id="config-minutes" style="text-align:center; font-size:1.5rem">
+            <button class="btn-action" style="width:100%"
+                onclick="App.saveConfig(UI.editingType, document.getElementById('config-minutes').value)">同步参数</button>
+            <button class="btn-outline" onclick="UI.modal.hide('config-modal')">取消</button>
+        </div>
+    </div>
+
+    <div id="workout-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h2>🧘 调息引导</h2>
+            <img id="workout-img" style="width:180px; margin:20px auto; display:block; border-radius:15px" src="">
+            <button id="workout-btn" class="btn-action" style="width:100%" onclick="App.confirmWorkout()"
+                disabled>保持动作...</button>
+        </div>
+    </div>
+
+    <script src="/js/cv.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+
+</html>

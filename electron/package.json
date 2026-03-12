@@ -1,0 +1,25 @@
+{
+  "name": "health-guardian-desktop",
+  "version": "1.0.0",
+  "description": "HealthGuardian 桌面端",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.healthguardian.desktop",
+    "productName": "HealthGuardian",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

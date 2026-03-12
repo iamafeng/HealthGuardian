@@ -1,0 +1,19 @@
+<svg width="200" height="200" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#0f172a"/>
+  <!-- 头 -->
+  <circle cx="50" cy="30" r="10" stroke="#00f2fe" stroke-width="2" fill="none"/>
+  <!-- 身体 -->
+  <line x1="50" y1="40" x2="50" y2="70" stroke="#4facfe" stroke-width="2"/>
+  <!-- 左手 -->
+  <line x1="50" y1="50" x2="20" y2="50" stroke="#4facfe" stroke-width="2">
+    <animate attributeName="x2" values="20; 35; 20" dur="1s" repeatCount="indefinite"/>
+  </line>
+  <!-- 右手 -->
+  <line x1="50" y1="50" x2="80" y2="50" stroke="#4facfe" stroke-width="2">
+    <animate attributeName="x2" values="80; 65; 80" dur="1s" repeatCount="indefinite"/>
+  </line>
+  <!-- 腿 -->
+  <line x1="50" y1="70" x2="40" y2="90" stroke="#4facfe" stroke-width="2"/>
+  <line x1="50" y1="70" x2="60" y2="90" stroke="#4facfe" stroke-width="2"/>
+  <text x="50" y="95" font-size="8" fill="#fff" text-anchor="middle">扩胸开肩</text>
+</svg>

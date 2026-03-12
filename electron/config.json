@@ -1,0 +1,4 @@
+{
+  "backendUrl": "",
+  "_comment": "如果为空，则尝试读取上层目录的 application.properties 作为本地端点。如果填写了具体的 URL (如 http://192.168.1.100:8080 或 https://yourdomain.com)，桌面端将直接连接该远程服务器。"
+}

@@ -9,9 +9,11 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import javax.annotation.PostConstruct;
 import java.util.*;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 @RestController
@@ -22,6 +24,19 @@ public class ReminderController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @PostConstruct
+    public void initTables() {
+        jdbcTemplate.execute(
+            "CREATE TABLE IF NOT EXISTS t_partner (" +
+            "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+            "  user_key VARCHAR(255) NOT NULL," +
+            "  partner_key VARCHAR(255) NOT NULL," +
+            "  created_at DATETIME DEFAULT NOW()," +
+            "  UNIQUE KEY uk_pair (user_key, partner_key)" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+    }
 
     private String hashPassword(String password) {
         try {
@@ -167,6 +182,122 @@ public class ReminderController {
         return result;
     }
 
+    @GetMapping("/stats/heatmap")
+    public List<Map<String, Object>> getHeatmap(@RequestParam String secretKey) {
+        return jdbcTemplate.queryForList(
+                "SELECT DATE(completed_at) as date, COUNT(*) as count FROM t_reminder_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY) GROUP BY date ORDER BY date ASC",
+                secretKey);
+    }
+
+    @GetMapping("/stats/weekly-report")
+    public Map<String, Object> getWeeklyReport(@RequestParam String secretKey) {
+        Map<String, Object> r = new HashMap<>();
+        r.put("thisWeek", jdbcTemplate.queryForList(
+                "SELECT remind_type, COUNT(*) as count FROM t_reminder_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY remind_type",
+                secretKey));
+        r.put("lastWeek", jdbcTemplate.queryForList(
+                "SELECT remind_type, COUNT(*) as count FROM t_reminder_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY) AND completed_at < DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY remind_type",
+                secretKey));
+        r.put("thisWeekDaily", jdbcTemplate.queryForList(
+                "SELECT DATE_FORMAT(completed_at, '%m-%d') as date, COUNT(*) as count FROM t_reminder_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY date ORDER BY date",
+                secretKey));
+        r.put("focusThisWeek", jdbcTemplate.queryForObject(
+                "SELECT IFNULL(SUM(duration_minutes), 0) FROM t_pomodoro_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)",
+                Long.class, secretKey));
+        r.put("focusLastWeek", jdbcTemplate.queryForObject(
+                "SELECT IFNULL(SUM(duration_minutes), 0) FROM t_pomodoro_log WHERE secret_key = ? AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY) AND completed_at < DATE_SUB(CURDATE(), INTERVAL 6 DAY)",
+                Long.class, secretKey));
+        return r;
+    }
+
+    @GetMapping("/streak")
+    public Map<String, Object> getStreak(@RequestParam String secretKey) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> dates = jdbcTemplate.queryForList(
+                "SELECT DISTINCT DATE(completed_at) as log_date FROM t_reminder_log WHERE secret_key = ? ORDER BY log_date DESC",
+                secretKey);
+        int streak = 0;
+        LocalDate checkDate = LocalDate.now();
+        Set<String> dateSet = new HashSet<>();
+        for (Map<String, Object> row : dates) {
+            dateSet.add(row.get("log_date").toString());
+        }
+        // 如果今天还没打卡，从昨天开始算连续
+        if (!dateSet.contains(checkDate.toString())) {
+            checkDate = checkDate.minusDays(1);
+        }
+        while (dateSet.contains(checkDate.toString())) {
+            streak++;
+            checkDate = checkDate.minusDays(1);
+        }
+        result.put("streak", streak);
+        result.put("todayDone", dateSet.contains(LocalDate.now().toString()));
+        return result;
+    }
+
+    @PostMapping("/user/auth")
+    @Transactional
+    public Map<String, Object> unifiedAuth(@RequestParam String username, @RequestParam String password,
+            @RequestParam(required = false) String currentKey) {
+        Map<String, Object> response = new HashMap<>();
+        String pwdHash = hashPassword(password);
+
+        // 1. 查询用户名是否已存在（自动判断 "登录召回" 还是 "新建绑定"）
+        List<Map<String, Object>> existingUsers = jdbcTemplate.queryForList(
+                "SELECT secret_key, password_hash FROM t_user WHERE username = ?", username);
+
+        if (!existingUsers.isEmpty()) {
+            // ── 用户名已存在 → 自动进入「登录召回」模式 ──
+            String storedHash = (String) existingUsers.get(0).get("password_hash");
+            if (!pwdHash.equals(storedHash)) {
+                response.put("success", false);
+                response.put("msg", "该账号已存在，密码不匹配");
+                return response;
+            }
+            String accountKey = (String) existingUsers.get(0).get("secret_key");
+            // 迁移当前访客临时数据到正式账号
+            if (currentKey != null && !currentKey.isEmpty() && !currentKey.equals(accountKey)) {
+                jdbcTemplate.update("UPDATE t_reminder_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("UPDATE t_user_achievement SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("UPDATE t_pomodoro_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("DELETE FROM t_reminder_config WHERE secret_key = ?", currentKey);
+                jdbcTemplate.update("DELETE FROM t_user WHERE secret_key = ? AND password_hash = ''", currentKey);
+            }
+            jdbcTemplate.update("UPDATE t_user SET last_active_at = NOW() WHERE secret_key = ?", accountKey);
+            response.put("success", true);
+            response.put("secretKey", accountKey);
+            response.put("msg", "身份召回成功，数据已同步");
+            return response;
+        }
+
+        // ── 用户名不存在 → 自动进入「新建绑定」模式 ──
+        String secretKey = (currentKey != null && !currentKey.isEmpty()) ? currentKey : UUID.randomUUID().toString();
+        try {
+            List<Map<String, Object>> existingByKey = jdbcTemplate.queryForList(
+                    "SELECT id FROM t_user WHERE secret_key = ?", secretKey);
+            if (existingByKey.isEmpty()) {
+                jdbcTemplate.update(
+                        "INSERT INTO t_user (username, password_hash, secret_key, last_active_at) VALUES (?, ?, ?, NOW())",
+                        username, pwdHash, secretKey);
+            } else {
+                jdbcTemplate.update(
+                        "UPDATE t_user SET username = ?, password_hash = ?, last_active_at = NOW() WHERE secret_key = ?",
+                        username, pwdHash, secretKey);
+            }
+            jdbcTemplate.update("UPDATE t_reminder_config SET username = ? WHERE secret_key = ?", username, secretKey);
+            award(secretKey, "COMMUNITY_STAR");
+            response.put("success", true);
+            response.put("secretKey", secretKey);
+            response.put("msg", "新身份创建成功");
+            return response;
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("msg", "操作失败，请重试");
+            return response;
+        }
+    }
+
+    // 保留旧接口向后兼容
     @PostMapping("/user/bind")
     @Transactional
     public String bindAccount(@RequestParam String username, @RequestParam String password,
@@ -295,5 +426,139 @@ public class ReminderController {
                 "UPDATE t_reminder_config SET interval_minutes = ? WHERE secret_key = ? AND remind_type = ?", minutes,
                 secretKey, type);
         return "OK";
+    }
+
+    // ─── 🤖 AI 健康日报 ────────────────────────────────────────────────────────
+    @GetMapping("/daily-brief")
+    public Map<String, Object> getDailyBrief(@RequestParam String secretKey) {
+        Map<String, Object> result = new HashMap<>();
+        // 昨日打卡
+        List<Map<String, Object>> yday = jdbcTemplate.queryForList(
+                "SELECT remind_type, COUNT(*) as count FROM t_reminder_log WHERE secret_key=? AND DATE(completed_at)=DATE_SUB(CURDATE(),INTERVAL 1 DAY) GROUP BY remind_type",
+                secretKey);
+        // 连续天数
+        Map<String, Object> streakData = getStreak(secretKey);
+        // 累计打卡天数
+        Integer totalDays = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT DATE(completed_at)) FROM t_reminder_log WHERE secret_key=?",
+                Integer.class, secretKey);
+        // 最活跃小时
+        List<Map<String, Object>> bestHourList = jdbcTemplate.queryForList(
+                "SELECT HOUR(completed_at) as hour, COUNT(*) as cnt FROM t_reminder_log WHERE secret_key=? GROUP BY hour ORDER BY cnt DESC LIMIT 1",
+                secretKey);
+        // 今日已打卡次数
+        Integer todayCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND DATE(completed_at)=CURDATE()",
+                Integer.class, secretKey);
+        result.put("yesterdayStats", yday);
+        result.put("streak", streakData.get("streak"));
+        result.put("todayDone", streakData.get("todayDone"));
+        result.put("totalDays", totalDays != null ? totalDays : 0);
+        result.put("bestHour", bestHourList.isEmpty() ? null : bestHourList.get(0).get("hour"));
+        result.put("todayCount", todayCount != null ? todayCount : 0);
+        return result;
+    }
+
+    // ─── 👫 健康搭子 ────────────────────────────────────────────────────────────
+    @GetMapping("/partner/my-code")
+    public Map<String, Object> getMyPartnerCode(@RequestParam String secretKey) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> user = jdbcTemplate.queryForList(
+                "SELECT username FROM t_user WHERE secret_key=?", secretKey);
+        if (user.isEmpty()) {
+            result.put("isRegistered", false);
+            result.put("code", null);
+        } else {
+            result.put("isRegistered", true);
+            result.put("code", user.get(0).get("username"));
+        }
+        List<Map<String, Object>> partners = jdbcTemplate.queryForList(
+                "SELECT u.username, p.partner_key FROM t_partner p LEFT JOIN t_user u ON u.secret_key=p.partner_key WHERE p.user_key=?",
+                secretKey);
+        result.put("partners", partners);
+        return result;
+    }
+
+    @PostMapping("/partner/bind")
+    @Transactional
+    public Map<String, Object> bindPartner(@RequestParam String myKey, @RequestParam String inviteCode) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> partnerUsers = jdbcTemplate.queryForList(
+                "SELECT secret_key, username FROM t_user WHERE username=?", inviteCode.trim());
+        if (partnerUsers.isEmpty()) {
+            result.put("success", false);
+            result.put("msg", "未找到该邀请码对应的用户，请确认对方已注册账号");
+            return result;
+        }
+        String partnerKey = (String) partnerUsers.get(0).get("secret_key");
+        if (partnerKey.equals(myKey)) {
+            result.put("success", false);
+            result.put("msg", "不能和自己做搭子哦 😄");
+            return result;
+        }
+        try {
+            jdbcTemplate.update("INSERT IGNORE INTO t_partner (user_key, partner_key) VALUES (?,?)", myKey, partnerKey);
+            jdbcTemplate.update("INSERT IGNORE INTO t_partner (user_key, partner_key) VALUES (?,?)", partnerKey, myKey);
+            result.put("success", true);
+            result.put("partnerName", partnerUsers.get(0).get("username"));
+            result.put("msg", "搭子绑定成功！互相监督，共同进步！🎉");
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("msg", "绑定失败，请重试");
+        }
+        return result;
+    }
+
+    @GetMapping("/partner/stats")
+    public List<Map<String, Object>> getPartnerStats(@RequestParam String myKey) {
+        return jdbcTemplate.queryForList(
+                "SELECT u.username, p.partner_key," +
+                " (SELECT COUNT(*) FROM t_reminder_log rl WHERE rl.secret_key=p.partner_key AND DATE(rl.completed_at)=CURDATE() AND rl.remind_type='DRINK') as drink_count," +
+                " (SELECT COUNT(*) FROM t_reminder_log rl WHERE rl.secret_key=p.partner_key AND DATE(rl.completed_at)=CURDATE() AND rl.remind_type='SEDENTARY') as rest_count," +
+                " (SELECT COUNT(DISTINCT DATE(rl.completed_at)) FROM t_reminder_log rl WHERE rl.secret_key=p.partner_key AND rl.completed_at >= DATE_SUB(CURDATE(),INTERVAL 6 DAY)) as week_days" +
+                " FROM t_partner p JOIN t_user u ON u.secret_key=p.partner_key WHERE p.user_key=?",
+                myKey);
+    }
+
+    @PostMapping("/partner/unbind")
+    public String unbindPartner(@RequestParam String myKey, @RequestParam String partnerKey) {
+        jdbcTemplate.update("DELETE FROM t_partner WHERE (user_key=? AND partner_key=?) OR (user_key=? AND partner_key=?)",
+                myKey, partnerKey, partnerKey, myKey);
+        return "OK";
+    }
+
+    // ─── ⚡ 智能提醒自适应 ────────────────────────────────────────────────────────
+    @GetMapping("/adaptive-schedule")
+    public Map<String, Object> getAdaptiveSchedule(@RequestParam String secretKey) {
+        Map<String, Object> result = new HashMap<>();
+        Integer totalCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=?", Integer.class, secretKey);
+        if (totalCount == null || totalCount < 10) {
+            result.put("hasData", false);
+            result.put("msg", "数据不足（当前 " + (totalCount == null ? 0 : totalCount) + " 条），至少需要 10 次打卡记录才能分析规律");
+            return result;
+        }
+        // 平均补水间隔
+        List<Map<String, Object>> drinkGap = jdbcTemplate.queryForList(
+                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secret_key=? AND remind_type='DRINK') t WHERE gap BETWEEN 15 AND 300",
+                secretKey);
+        // 平均久坐间隔
+        List<Map<String, Object>> restGap = jdbcTemplate.queryForList(
+                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secret_key=? AND remind_type='SEDENTARY') t WHERE gap BETWEEN 15 AND 300",
+                secretKey);
+        // 最活跃时段 Top 5
+        List<Map<String, Object>> activeHours = jdbcTemplate.queryForList(
+                "SELECT HOUR(completed_at) as hour, COUNT(*) as cnt FROM t_reminder_log WHERE secret_key=? GROUP BY hour ORDER BY cnt DESC LIMIT 5",
+                secretKey);
+        // 响应率：今日提醒 vs 总应打卡（粗估）
+        Long completedToday = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND DATE(completed_at)=CURDATE()", Long.class, secretKey);
+        result.put("hasData", true);
+        result.put("totalCount", totalCount);
+        result.put("drinkAvgGap", drinkGap.isEmpty() ? null : drinkGap.get(0).get("avg_gap"));
+        result.put("restAvgGap", restGap.isEmpty() ? null : restGap.get(0).get("avg_gap"));
+        result.put("activeHours", activeHours);
+        result.put("completedToday", completedToday);
+        return result;
     }
 }

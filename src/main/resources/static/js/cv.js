@@ -10,6 +10,14 @@ const CV = {
     badPostureFrames: 0,
     lastWarningTime: 0,
 
+    // 👁️ 眼部疲劳追踪
+    gazeStartTime: null,
+    eyeFatigueAlertSent: false,
+    blinkEvents: [],       // 记录眨眼时间戳
+    lastEyeScore: 1.0,    // 上一帧眼睛置信度
+    eyeScoreHistory: [],   // 平滑缓冲
+    lastGazeUpdateTime: 0,
+
     async init() {
         this.video = document.getElementById('cv-video');
         this.canvas = document.getElementById('cv-canvas');
@@ -83,6 +91,13 @@ const CV = {
         document.getElementById('cv-start').disabled = false;
         document.getElementById('cv-stop').disabled = true;
         this.baseline = null;
+        // 重置疲劳追踪
+        this.gazeStartTime = null;
+        this.eyeFatigueAlertSent = false;
+        this.blinkEvents = [];
+        this.lastEyeScore = 1.0;
+        const eyeDisplay = document.getElementById('eye-fatigue-display');
+        if (eyeDisplay) eyeDisplay.style.display = 'none';
     },
 
     calibrateBaseline() {
@@ -117,10 +132,57 @@ const CV = {
                         this.baseline = eyeDist;
                         UI.toast('面部拓扑基准已锚定', 'success');
                     } else if (this.baseline !== null) {
-                        // 探颈检测的核心逻辑：如果双眼距离比基准大 1.4 倍，说明此时大幅靠近屏幕
                         if (eyeDist > this.baseline * 1.4) {
                             isBadPosture = true;
                         } 
+                    }
+
+                    // ─── 👁️ 注视时长 & 眨眼率追踪 ───
+                    const now = Date.now();
+                    if (!this.gazeStartTime) this.gazeStartTime = now;
+                    const gazeMinutes = Math.floor((now - this.gazeStartTime) / 60000);
+
+                    // 眨眼检测：置信度从高→低→高视为一次眨眼
+                    const avgScore = (leftEye.score + rightEye.score) / 2;
+                    this.eyeScoreHistory.push(avgScore);
+                    if (this.eyeScoreHistory.length > 5) this.eyeScoreHistory.shift();
+                    const smoothed = this.eyeScoreHistory.reduce((a,b)=>a+b,0)/this.eyeScoreHistory.length;
+                    if (this.lastEyeScore > 0.55 && smoothed < 0.35) {
+                        this.blinkEvents.push(now);
+                    }
+                    this.lastEyeScore = smoothed;
+                    // 只保留最近 60 秒的眨眼事件
+                    this.blinkEvents = this.blinkEvents.filter(t => now - t < 60000);
+                    const blinkRate = this.blinkEvents.length;
+
+                    // 更新 UI（每秒一次，避免抖动）
+                    if (now - this.lastGazeUpdateTime > 1000) {
+                        this.lastGazeUpdateTime = now;
+                        const eyeDisplay = document.getElementById('eye-fatigue-display');
+                        if (eyeDisplay) {
+                            eyeDisplay.style.display = 'flex';
+                            document.getElementById('gaze-duration').innerText = gazeMinutes;
+                            const blinkEl = document.getElementById('blink-rate');
+                            if (blinkEl) blinkEl.innerText = blinkRate;
+                            // 预警着色
+                            const gazeEl = document.getElementById('gaze-duration');
+                            if (gazeMinutes >= 15) gazeEl.style.color = 'var(--warning)';
+                            else if (gazeMinutes >= 20) gazeEl.style.color = 'var(--accent)';
+                            else gazeEl.style.color = 'var(--primary)';
+                        }
+                    }
+                    // 超过 20 分钟连续注视 → 触发护眼提醒
+                    if (gazeMinutes >= 20 && !this.eyeFatigueAlertSent) {
+                        this.eyeFatigueAlertSent = true;
+                        this.triggerEyeFatigueAlert();
+                    }
+                } else {
+                    // 面部消失（用户低头/离开屏幕）→ 重置注视计时
+                    if (this.gazeStartTime) {
+                        this.gazeStartTime = null;
+                        this.eyeFatigueAlertSent = false;
+                        const eyeDisplay = document.getElementById('eye-fatigue-display');
+                        if (eyeDisplay) eyeDisplay.style.display = 'none';
                     }
                 }
                 
@@ -175,20 +237,31 @@ const CV = {
 
     triggerWarning() {
         UI.toast('⚠️ 生命警告：检测到严重「探颈」体态！', 'error');
-        // 可视化红色闪烁
         document.body.style.boxShadow = "inset 0 0 80px rgba(255, 71, 87, 0.6)";
         setTimeout(() => document.body.style.boxShadow = "none", 800);
-
-        // 自动触发眼部+颈部调息序列
         if (typeof Workout !== 'undefined') {
             setTimeout(() => Workout.start('eye'), 1200);
         }
-
-        // 发送 webhook 到手机
-        if (App.state && App.state.secretKey) {
+        if (App.state && App.state.secretKey && App.state.isRegistered) {
             API.post('/api/notify/webhook', {
                 secretKey: App.state.secretKey,
                 message: `【机体告警】AI 行为模型侦测到违规坐姿（探颈/僵死前倾）。颈椎承载超限 150%，强烈建议您立刻后仰并执行调息协议！`
+            });
+        }
+    },
+
+    triggerEyeFatigueAlert() {
+        UI.toast('👁️ 注视时长已达 20 分钟，眼部疲劳预警！建议远眺 20 秒', 'warning');
+        document.body.style.boxShadow = "inset 0 0 60px rgba(251, 191, 36, 0.4)";
+        setTimeout(() => document.body.style.boxShadow = "none", 1200);
+        // 自动触发眼部放松序列
+        if (typeof Workout !== 'undefined') {
+            setTimeout(() => Workout.start('eye'), 1500);
+        }
+        if (App.state && App.state.secretKey && App.state.isRegistered) {
+            API.post('/api/notify/webhook', {
+                secretKey: App.state.secretKey,
+                message: `【护眼预警】连续注视屏幕已超过 20 分钟。请立即远眺窗外或执行眼部放松协议！`
             });
         }
     }

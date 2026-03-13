@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always"
   },
   "devDependencies": {
     "electron": "^28.2.0",
@@ -19,7 +20,13 @@
       "output": "dist"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "HealthGuardian-Setup.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "iamafeng",
+      "repo": "HealthGuardian"
     }
   }
 }

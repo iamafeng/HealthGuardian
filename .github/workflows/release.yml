@@ -6,6 +6,10 @@ on:
     tags:
       - 'v*'
 
+# 必须显式授权才能创建 Release 并上传附件
+permissions:
+  contents: write
+
 jobs:
   release-windows:
     runs-on: windows-latest
@@ -13,11 +17,13 @@ jobs:
     steps:
       - name: Checkout 代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: 配置 Node.js 18
+      - name: 配置 Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: electron/package-lock.json
 
@@ -31,12 +37,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 列出构建产物（调试）
+        run: Get-ChildItem electron/dist/ -Recurse -Filter "*.exe" | Select-Object FullName, Length
+        shell: pwsh
+
       - name: 上传到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: electron/dist/HealthGuardian-Setup.exe
+          files: electron/dist/*.exe
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

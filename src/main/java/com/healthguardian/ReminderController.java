@@ -63,18 +63,32 @@ public class ReminderController {
         if (secretKey != null && !secretKey.isEmpty()) {
             List<Map<String, Object>> configs = jdbcTemplate
                     .queryForList("SELECT * FROM t_reminder_config WHERE secret_key = ? AND is_enabled = 1", secretKey);
-            if (!configs.isEmpty()) {
+            
+            List<Map<String, Object>> userInfos = jdbcTemplate.queryForList(
+                    "SELECT username, webhook_url, is_webhook_enabled FROM t_user WHERE secret_key = ?", secretKey);
+
+            if (!configs.isEmpty() || !userInfos.isEmpty()) {
+                // 如果配置不存在但用户存在，可能是从其他端同步过来的新账号，需要初始化默认配置
+                if (configs.isEmpty() && !userInfos.isEmpty()) {
+                    String actualUsername = (String) userInfos.get(0).get("username");
+                    jdbcTemplate.update(
+                            "INSERT INTO t_reminder_config (username, secret_key, remind_type, interval_minutes) VALUES (?, ?, 'DRINK', 45)",
+                            actualUsername, secretKey);
+                    jdbcTemplate.update(
+                            "INSERT INTO t_reminder_config (username, secret_key, remind_type, interval_minutes) VALUES (?, ?, 'SEDENTARY', 60)",
+                            actualUsername, secretKey);
+                    configs = jdbcTemplate.queryForList("SELECT * FROM t_reminder_config WHERE secret_key = ? AND is_enabled = 1", secretKey);
+                }
+
                 response.put("configs", configs);
                 response.put("secretKey", secretKey);
-                List<Map<String, Object>> userInfos = jdbcTemplate.queryForList(
-                        "SELECT username, webhook_url, is_webhook_enabled FROM t_user WHERE secret_key = ?", secretKey);
                 if (!userInfos.isEmpty()) {
                     response.put("username", userInfos.get(0).get("username"));
                     response.put("webhookUrl", userInfos.get(0).get("webhook_url"));
                     response.put("isWebhookEnabled", userInfos.get(0).get("is_webhook_enabled"));
                 }
                 // 告知前端：当前 key 是否已绑定真实账号（用于访客提醒逻辑）
-                response.put("isRegistered", !userInfos.isEmpty());
+                response.put("isRegistered", !userInfos.isEmpty() && !((String)userInfos.get(0).get("username")).startsWith("访客_"));
                 jdbcTemplate.update("UPDATE t_user SET last_active_at = NOW() WHERE secret_key = ?", secretKey);
                 return response;
             }
@@ -249,19 +263,39 @@ public class ReminderController {
         if (!existingUsers.isEmpty()) {
             // ── 用户名已存在 → 自动进入「登录召回」模式 ──
             String storedHash = (String) existingUsers.get(0).get("password_hash");
-            if (!pwdHash.equals(storedHash)) {
+            if (storedHash != null && !storedHash.isEmpty() && !pwdHash.equals(storedHash)) {
                 response.put("success", false);
                 response.put("msg", "该账号已存在，密码不匹配");
                 return response;
             }
             String accountKey = (String) existingUsers.get(0).get("secret_key");
+            
+            // 如果该账号之前没有密码（比如旧版本的访客账号），现在设置密码
+            if (storedHash == null || storedHash.isEmpty()) {
+                jdbcTemplate.update("UPDATE t_user SET password_hash = ? WHERE secret_key = ?", pwdHash, accountKey);
+            }
+
             // 迁移当前访客临时数据到正式账号
             if (currentKey != null && !currentKey.isEmpty() && !currentKey.equals(accountKey)) {
-                jdbcTemplate.update("UPDATE t_reminder_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
-                jdbcTemplate.update("UPDATE t_user_achievement SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
-                jdbcTemplate.update("UPDATE t_pomodoro_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
-                jdbcTemplate.update("DELETE FROM t_reminder_config WHERE secret_key = ?", currentKey);
-                jdbcTemplate.update("DELETE FROM t_user WHERE secret_key = ? AND password_hash = ''", currentKey);
+                // 检查是否有重复记录，避免唯一约束冲突（针对 log 和 achievement 等）
+                jdbcTemplate.update("UPDATE IGNORE t_reminder_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("UPDATE IGNORE t_user_achievement SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("UPDATE IGNORE t_pomodoro_log SET secret_key = ? WHERE secret_key = ?", accountKey, currentKey);
+                
+                // 迁移搭子关系
+                jdbcTemplate.update("UPDATE IGNORE t_partner SET user_key = ? WHERE user_key = ?", accountKey, currentKey);
+                jdbcTemplate.update("UPDATE IGNORE t_partner SET partner_key = ? WHERE partner_key = ?", accountKey, currentKey);
+
+                // 如果正式账号没有配置，则同步访客配置；如果有，则删除访客配置
+                List<Map<String, Object>> accountConfigs = jdbcTemplate.queryForList("SELECT id FROM t_reminder_config WHERE secret_key = ?", accountKey);
+                if (accountConfigs.isEmpty()) {
+                    jdbcTemplate.update("UPDATE t_reminder_config SET secret_key = ?, username = ? WHERE secret_key = ?", accountKey, username, currentKey);
+                } else {
+                    jdbcTemplate.update("DELETE FROM t_reminder_config WHERE secret_key = ?", currentKey);
+                }
+                
+                // 删除旧的访客用户记录（如果有）
+                jdbcTemplate.update("DELETE FROM t_user WHERE secret_key = ? AND (password_hash = '' OR password_hash IS NULL)", currentKey);
             }
             jdbcTemplate.update("UPDATE t_user SET last_active_at = NOW() WHERE secret_key = ?", accountKey);
             response.put("success", true);
@@ -544,7 +578,7 @@ public class ReminderController {
                 secretKey);
         // 平均久坐间隔
         List<Map<String, Object>> restGap = jdbcTemplate.queryForList(
-                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secret_key=? AND remind_type='SEDENTARY') t WHERE gap BETWEEN 15 AND 300",
+                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secretKey=? AND remind_type='SEDENTARY') t WHERE gap BETWEEN 15 AND 300",
                 secretKey);
         // 最活跃时段 Top 5
         List<Map<String, Object>> activeHours = jdbcTemplate.queryForList(

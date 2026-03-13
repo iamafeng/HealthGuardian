@@ -34,7 +34,7 @@ const Themes = {
         '--glass': 'rgba(255, 255, 255, 0.7)', '--glass-hover': 'rgba(255, 255, 255, 0.85)',
         '--border': 'rgba(0, 0, 0, 0.08)', '--text-main': '#1e293b', '--text-dim': '#64748b',
         '--bg-gradient': 'radial-gradient(circle at 0% 0%, #f8fafc 0%, #e2e8f0 100%)',
-        '--modal-bg': '#ffffff',
+        '--modal-bg': '#ffffff', '--font-main': "'Inter', 'Segoe UI', 'Microsoft YaHei', sans-serif"
     }
 };
 
@@ -175,7 +175,14 @@ const App = {
                 if (keyExpired) {
                     setTimeout(() => UI.toast('⚠️ 上次会话已失效，已建立新身份。如需恢复账号数据，请点击「身份同步」登录', 'warning'), 800);
                 } else if (res.isRegistered === false && prevKey) {
-                    setTimeout(() => UI.toast('💡 当前为匿名模式，建议点击「身份同步」绑定账号', 'warning'), 1500);
+                    // 已有 key 但未注册，可能是老用户或访客
+                    // 检查缓存中是否有用户名，如果有且不是访客，说明本地认为是登录状态但服务器没查到
+                    const cachedUser = localStorage.getItem('hg_cached_username');
+                    if (cachedUser && !cachedUser.startsWith('访客_') && cachedUser !== '匿名用户') {
+                        setTimeout(() => UI.toast('👤 检测到本地登录凭证，但云端未同步。请重新「身份同步」以激活', 'warning'), 1500);
+                    } else {
+                        setTimeout(() => UI.toast('💡 当前为匿名模式，建议点击「身份同步」绑定账号', 'warning'), 1500);
+                    }
                 }
             }
         } catch (e) {
@@ -863,6 +870,27 @@ const Workout = {
         full:     ['squat', 'chest', 'back', 'neck'],
     },
 
+    getAudioCtx() {
+        if (!this._audioCtx) this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        return this._audioCtx;
+    },
+
+    playTone(freq, type, duration) {
+        try {
+            const ctx = this.getAudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + duration);
+        } catch(e) {}
+    },
+
     start(sequenceName) {
         if (!sequenceName) {
             const h = new Date().getHours();
@@ -906,9 +934,16 @@ const Workout = {
             document.getElementById('workout-countdown').innerText = this.timeLeft;
             const ring = document.getElementById('workout-ring-progress');
             if (ring) ring.style.strokeDashoffset = circumference * (1 - this.timeLeft / total);
+            
+            // 倒计时最后3秒提示音
+            if (this.timeLeft > 0 && this.timeLeft <= 3) {
+                this.playTone(440, 'sine', 0.1);
+            }
+
             if (this.timeLeft <= 0) {
                 clearInterval(this._interval);
                 document.getElementById('workout-btn').disabled = false;
+                this.playTone(880, 'sine', 0.3); // 完成提示音
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             } else { this.timeLeft--; }
         };

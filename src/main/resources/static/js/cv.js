@@ -29,6 +29,9 @@ const CV = {
     async start() {
         if (!this.video || !this.canvas) return;
 
+        // ── 前置检查：强制重置状态 ──────────────────────────────────────
+        if (this.isDetecting) this.stop();
+
         // ── 前置检查：确认 AI 库已成功加载 ──────────────────────────────────
         if (typeof tf === 'undefined') {
             document.getElementById('cv-overlay-text').innerText = "TensorFlow 库未加载";
@@ -49,14 +52,18 @@ const CV = {
         try {
             if (!this.detector) {
                 // 加载 MoveNet 模型（需能访问 storage.googleapis.com）
-                document.getElementById('cv-overlay-text').innerText = "正在下载 AI 模型（约 6MB）...";
+                document.getElementById('cv-overlay-text').innerText = "下载视觉权重 (6MB)...";
+                await tf.ready(); // 确保 tf 已准备好
                 await tf.setBackend('webgl');
                 this.detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
-                    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+                    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+                    enableSmoothing: true
                 });
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 320, height: 240, facingMode: 'user' } 
+            });
             this.video.srcObject = stream;
             
             await new Promise((resolve) => {

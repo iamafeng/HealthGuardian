@@ -61,17 +61,17 @@
             <h2>📡 指令中心</h2>
             <div id="remind-list">正在初始化生物传感器...</div>
 
-            <button class="btn-outline" onclick="UI.modal.showAuth()">
-                <span>👤 身份同步</span>
-            </button>
-            <button class="btn-outline" onclick="UI.modal.showSettings()">
-                <span>⚙️ 系统设置</span>
+            <button class="btn-outline" onclick="App.openPartnerModal()">
+                <span>👫 健康搭子</span>
             </button>
             <button class="btn-outline" onclick="UI.modal.showWebhook()">
                 <span>🔔 推送与通知</span>
             </button>
-            <button class="btn-outline" onclick="App.openPartnerModal()">
-                <span>👫 健康搭子</span>
+            <button class="btn-outline" onclick="UI.modal.showSettings()">
+                <span>⚙️ 系统设置</span>
+            </button>
+            <button class="btn-outline" onclick="UI.modal.showAuth()">
+                <span>👤 身份同步</span>
             </button>
             <button class="btn-outline" onclick="UI.modal.show('breathing-modal')">
                 <span>🌬️ 呼吸训练</span>

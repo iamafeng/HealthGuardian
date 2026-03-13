@@ -69,8 +69,8 @@ body {
 }
 
 .glass-card:hover {
-    border-color: rgba(var(--primary-rgb, 0, 242, 254), 0.3);
-    box-shadow: 0 0 40px rgba(var(--primary-rgb, 0, 242, 254), 0.1);
+    border-color: rgba(0, 0, 0, 0.0);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.1);
     transform: translateY(-4px);
 }
 
@@ -163,7 +163,7 @@ h2 {
     padding: 20px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 20px;
-    border: 1px solid rgba(0, 242, 254, 0.1);
+    border: 1px solid var(--border);
 }
 
 #pomo-timer {
@@ -171,7 +171,8 @@ h2 {
     font-size: 3.5rem;
     font-weight: 800;
     color: var(--primary);
-    text-shadow: 0 0 30px rgba(0, 242, 254, 0.2);
+    text-shadow: 0 0 30px currentColor;
+    opacity: 0.9;
     margin: 10px 0;
     line-height: 1;
 }
@@ -960,4 +961,247 @@ body[data-theme="light"] #pomo-timer {
     color: var(--primary);
     text-shadow: none;
 }
+
+/* ─── 🌿 森林主题专项覆盖 ────────────────────────────────────────────── */
+body[data-theme="forest"] .glass-card {
+    background: rgba(5, 46, 22, 0.5);
+    border-color: rgba(16, 185, 129, 0.15);
+}
+body[data-theme="forest"] .glass-card:hover {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.1);
+}
+body[data-theme="forest"] .modal-overlay {
+    background: rgba(2, 20, 10, 0.85);
+}
+body[data-theme="forest"] .modal-card {
+    background: var(--modal-bg);
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 20px 60px rgba(16, 185, 129, 0.15);
+}
+body[data-theme="forest"] input {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(16, 185, 129, 0.2);
+    color: var(--text-main);
+}
+body[data-theme="forest"] input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+body[data-theme="forest"] .btn-outline:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(16, 185, 129, 0.08);
+}
+body[data-theme="forest"] .toast {
+    background: rgba(5, 46, 22, 0.95);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+body[data-theme="forest"] .theme-btn:hover,
+body[data-theme="forest"] .theme-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(16, 185, 129, 0.12);
+}
+body[data-theme="forest"] .ambient-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(16, 185, 129, 0.12);
+}
+body[data-theme="forest"] .streak-container {
+    background: rgba(16, 185, 129, 0.08);
+}
+body[data-theme="forest"] .brief-insight {
+    background: rgba(16, 185, 129, 0.06);
+    border-left-color: var(--primary);
+    color: var(--primary);
+}
+body[data-theme="forest"] .ach-item.active {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* ─── 🌊 深海主题专项覆盖 ────────────────────────────────────────────── */
+body[data-theme="ocean"] .glass-card {
+    background: rgba(12, 10, 26, 0.5);
+    border-color: rgba(167, 139, 250, 0.15);
+}
+body[data-theme="ocean"] .glass-card:hover {
+    border-color: rgba(244, 114, 182, 0.4);
+    box-shadow: 0 0 40px rgba(167, 139, 250, 0.1);
+}
+body[data-theme="ocean"] .modal-overlay {
+    background: rgba(5, 4, 14, 0.85);
+}
+body[data-theme="ocean"] .modal-card {
+    background: var(--modal-bg);
+    border-color: rgba(244, 114, 182, 0.5);
+    box-shadow: 0 20px 60px rgba(167, 139, 250, 0.15);
+}
+body[data-theme="ocean"] input {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(167, 139, 250, 0.2);
+    color: var(--text-main);
+}
+body[data-theme="ocean"] input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(244, 114, 182, 0.12);
+}
+body[data-theme="ocean"] .btn-outline:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(244, 114, 182, 0.08);
+}
+body[data-theme="ocean"] .toast {
+    background: rgba(12, 10, 26, 0.95);
+    border-color: rgba(167, 139, 250, 0.3);
+}
+body[data-theme="ocean"] .theme-btn:hover,
+body[data-theme="ocean"] .theme-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(244, 114, 182, 0.1);
+}
+body[data-theme="ocean"] .ambient-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(244, 114, 182, 0.1);
+}
+body[data-theme="ocean"] .streak-container {
+    background: rgba(244, 114, 182, 0.08);
+}
+body[data-theme="ocean"] .brief-insight {
+    background: rgba(244, 114, 182, 0.06);
+    border-left-color: var(--primary);
+    color: var(--primary);
+}
+body[data-theme="ocean"] .ach-item.active {
+    background: rgba(167, 139, 250, 0.1);
+    border-color: rgba(167, 139, 250, 0.35);
+}
+
+/* ─── 🐾 健康小怪兽 ─────────────────────────────────────────────────── */
+#health-pet-widget {
+    transition: all 0.3s ease;
+}
+#health-pet-widget:hover {
+    border-color: var(--primary) !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    transform: translateY(-2px);
+}
+@keyframes petBounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-6px) scale(1.05); }
+}
+@keyframes petShake {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-8deg); }
+    75% { transform: rotate(8deg); }
+}
+@keyframes petSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ─── 🏅 隐藏成就解锁动画 ───────────────────────────────────────────── */
+@keyframes achieveUnlock {
+    0% { transform: scale(0.5) rotate(-15deg); opacity: 0; }
+    60% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.ach-item.just-unlocked {
+    animation: achieveUnlock 0.7s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+    box-shadow: 0 0 20px var(--gold);
+}
+.ach-item[data-hidden="true"]:not(.active) {
+    opacity: 0.4;
+    filter: grayscale(1);
+}
+.ach-item[data-hidden="true"]:not(.active) .ach-emoji {
+    filter: blur(3px);
+}
+
+/* ─── 🌐 页脚 ───────────────────────────────────────────────────────────── */
+.site-footer {
+    max-width: 1400px;
+    width: 100%;
+    margin: 10px auto 0;
+    padding: 18px 25px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+}
+
+.footer-inner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.footer-link {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 0.78rem;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.25s;
+}
+
+.footer-link:hover {
+    color: var(--primary);
+}
+
+.footer-sep {
+    color: var(--border);
+    font-size: 0.75rem;
+}
+
+.footer-text {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.footer-sub {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    opacity: 0.4;
+}
+
+.footer-donate-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: 0.25s;
+    font-family: var(--font-main);
+}
+
+.footer-donate-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(251, 191, 36, 0.06);
+}
+
+/* 亮色主题下的页脚 */
+body[data-theme="light"] .site-footer {
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme="light"] .footer-donate-btn {
+    background: none;
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #64748b;
+}
+
+body[data-theme="light"] .footer-donate-btn:hover {
+    border-color: #d97706;
+    color: #d97706;
+}
+
 

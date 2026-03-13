@@ -36,6 +36,40 @@ public class ReminderController {
             "  UNIQUE KEY uk_pair (user_key, partner_key)" +
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
+        // 初始化成就基础数据（全量幂等插入，含隐藏成就）
+        String[][] achievements = {
+            {"EARLY_BIRD",         "早起鸟",       "08:30 前开启今日首个协议",                    "0"},
+            {"NIGHT_OWL",          "夜猫子",       "22:00 后依然在执行协议",                       "0"},
+            {"WATER_BUFFALO",      "大水牛",       "单日生物补给达到 8 次",                        "0"},
+            {"PERSISTENCE",        "不倒翁",       "连续 7 天坚持监控生命体征",                     "0"},
+            {"FOCUS_MASTER",       "专注达人",     "累计完成 5 次深度专注协议",                     "0"},
+            {"PRODUCTIVITY_BEAST", "效率怪兽",     "累计完成 10 次专注协议",                       "0"},
+            {"STRETCH_EXPERT",     "拉伸达人",     "累计完成 20 次调息指引",                       "0"},
+            {"COMMUNITY_STAR",     "系统公民",     "成功建立加密账号身份",                         "0"},
+            // 隐藏成就
+            {"MIDNIGHT_GHOST",     "午夜幽灵",     "🔒 隐藏成就：在深夜 00:00-04:00 完成打卡",     "1"},
+            {"HYDRO_CHAMPION",     "补水冠军",     "🔒 隐藏成就：单日补给达到 10 次",             "1"},
+            {"DAWN_WARRIOR",       "黎明战士",     "🔒 隐藏成就：07:00 前完成今日首次打卡",        "1"},
+            {"PET_LOVER",          "宠物达人",     "🔒 隐藏成就：通过小怪兽喂水 5 次",            "1"},
+        };
+        for (String[] a : achievements) {
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO t_achievement (code, name, description) VALUES (?, ?, ?)",
+                a[0], a[1], a[2]);
+            // 添加 is_hidden 字段（如果不存在）
+        }
+        // 尝试添加 is_hidden 字段（忽略错误，字段可能已存在）
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE t_achievement ADD COLUMN IF NOT EXISTS is_hidden TINYINT(1) DEFAULT 0 COMMENT '是否隐藏成就'");
+        } catch (Exception ignored) {}
+        // 更新隐藏标记
+        String[] hiddenCodes = {"MIDNIGHT_GHOST", "HYDRO_CHAMPION", "DAWN_WARRIOR", "PET_LOVER"};
+        for (String code : hiddenCodes) {
+            try {
+                jdbcTemplate.update("UPDATE t_achievement SET is_hidden=1 WHERE code=?", code);
+            } catch (Exception ignored) {}
+        }
     }
 
     private String hashPassword(String password) {
@@ -130,16 +164,30 @@ public class ReminderController {
 
     private void checkAchievements(String secretKey, String type) {
         LocalTime now = LocalTime.now();
+        // 标准成就
         if (now.isBefore(LocalTime.of(8, 30)))
             award(secretKey, "EARLY_BIRD");
         if (now.isAfter(LocalTime.of(22, 0)))
             award(secretKey, "NIGHT_OWL");
+        // 🔒 隐藏：午夜幽灵
+        if (now.isBefore(LocalTime.of(4, 0)))
+            award(secretKey, "MIDNIGHT_GHOST");
+        // 🔒 隐藏：黎明战士（07:00 前首次打卡）
+        if (now.isBefore(LocalTime.of(7, 0))) {
+            Integer todayFirst = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND DATE(completed_at)=CURDATE()",
+                Integer.class, secretKey);
+            if (todayFirst != null && todayFirst == 1) award(secretKey, "DAWN_WARRIOR");
+        }
         if ("DRINK".equals(type)) {
             Integer c = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND remind_type='DRINK' AND DATE(completed_at)=CURDATE()",
                     Integer.class, secretKey);
             if (c != null && c >= 8)
                 award(secretKey, "WATER_BUFFALO");
+            // 🔒 隐藏：补水冠军
+            if (c != null && c >= 10)
+                award(secretKey, "HYDRO_CHAMPION");
         }
         if ("SEDENTARY".equals(type)) {
             Integer c = jdbcTemplate.queryForObject(
@@ -401,7 +449,10 @@ public class ReminderController {
     @GetMapping("/user/achievements")
     public List<Map<String, Object>> getUserAchievements(@RequestParam String secretKey) {
         return jdbcTemplate.queryForList(
-                "SELECT a.*, (CASE WHEN ua.secret_key IS NOT NULL THEN 1 ELSE 0 END) as is_achieved FROM t_achievement a LEFT JOIN t_user_achievement ua ON a.code = ua.achievement_code AND ua.secret_key = ?",
+                "SELECT a.*, COALESCE(a.is_hidden, 0) as is_hidden, " +
+                "(CASE WHEN ua.secret_key IS NOT NULL THEN 1 ELSE 0 END) as is_achieved " +
+                "FROM t_achievement a LEFT JOIN t_user_achievement ua " +
+                "ON a.code = ua.achievement_code AND ua.secret_key = ?",
                 secretKey);
     }
 
@@ -561,6 +612,57 @@ public class ReminderController {
         return "OK";
     }
 
+    // ─── 👫 搭子提醒（一键电击）────────────────────────────────────────────────
+    @PostMapping("/partner/nudge")
+    public Map<String, Object> nudgePartner(@RequestParam String myKey, @RequestParam String partnerKey) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 获取自己的用户名
+            List<Map<String, Object>> myInfo = jdbcTemplate.queryForList(
+                    "SELECT username FROM t_user WHERE secret_key=?", myKey);
+            // 获取搭子的 webhook
+            List<Map<String, Object>> partnerInfo = jdbcTemplate.queryForList(
+                    "SELECT username, webhook_url, is_webhook_enabled FROM t_user WHERE secret_key=?", partnerKey);
+            if (partnerInfo.isEmpty()) {
+                result.put("success", false); result.put("msg", "搭子信息未找到");
+                return result;
+            }
+            String myName = myInfo.isEmpty() ? "你的搭子" : (String) myInfo.get(0).get("username");
+            String partnerName = (String) partnerInfo.get(0).get("username");
+            Object enabledObj = partnerInfo.get(0).get("is_webhook_enabled");
+            boolean webhookEnabled = enabledObj instanceof Number && ((Number) enabledObj).intValue() == 1;
+            String webhookUrl = (String) partnerInfo.get(0).get("webhook_url");
+            if (webhookEnabled && webhookUrl != null && !webhookUrl.isEmpty()) {
+                HttpHeaders h = new HttpHeaders();
+                h.setContentType(MediaType.APPLICATION_JSON);
+                Map<String, Object> b = new HashMap<>();
+                b.put("msgtype", "text");
+                Map<String, String> t = new HashMap<>();
+                t.put("content", String.format("⚡【搭子督促】%s 发现你好久没打卡了！快起来动一动，别让你的小怪兽饿坏了！💪", myName));
+                b.put("text", t);
+                restTemplate.postForEntity(webhookUrl, new HttpEntity<>(b, h), String.class);
+            }
+            result.put("success", true);
+            result.put("msg", "已成功向 " + partnerName + " 发出电击提醒！⚡");
+        } catch (Exception e) {
+            result.put("success", true);
+            result.put("msg", "提醒已发出（对方可能未设置 Webhook）");
+        }
+        return result;
+    }
+
+    // ─── 🐾 宠物喂食成就触发 ────────────────────────────────────────────────────
+    @PostMapping("/pet/feed")
+    public String petFeed(@RequestParam String secretKey) {
+        // 统计通过宠物喂食的次数（使用 pet_feed 类型的 log）
+        jdbcTemplate.update("INSERT INTO t_reminder_log (remind_type, secret_key) VALUES ('PET_FEED', ?)", secretKey);
+        Integer c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND remind_type='PET_FEED'",
+                Integer.class, secretKey);
+        if (c != null && c >= 5) award(secretKey, "PET_LOVER");
+        return "OK";
+    }
+
     // ─── ⚡ 智能提醒自适应 ────────────────────────────────────────────────────────
     @GetMapping("/adaptive-schedule")
     public Map<String, Object> getAdaptiveSchedule(@RequestParam String secretKey) {
@@ -578,7 +680,7 @@ public class ReminderController {
                 secretKey);
         // 平均久坐间隔
         List<Map<String, Object>> restGap = jdbcTemplate.queryForList(
-                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secretKey=? AND remind_type='SEDENTARY') t WHERE gap BETWEEN 15 AND 300",
+                "SELECT ROUND(AVG(gap)) as avg_gap FROM (SELECT TIMESTAMPDIFF(MINUTE, LAG(completed_at) OVER (PARTITION BY remind_type ORDER BY completed_at), completed_at) as gap FROM t_reminder_log WHERE secret_key=? AND remind_type='SEDENTARY') t WHERE gap BETWEEN 15 AND 300",
                 secretKey);
         // 最活跃时段 Top 5
         List<Map<String, Object>> activeHours = jdbcTemplate.queryForList(

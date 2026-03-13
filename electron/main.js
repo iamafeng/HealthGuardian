@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net } = require('electron');
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -83,6 +83,12 @@ function createWindow() {
   });
 }
 
+// ─── 向渲染进程注入 Electron 环境标识 ─────────────────────────────────────
+function injectElectronFlag(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript('window.isElectronApp = true;').catch(() => {});
+}
+
 // 检查后端是否启动
 function checkBackendStatusAndLoad() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -94,6 +100,10 @@ function checkBackendStatusAndLoad() {
     mainWindow.loadURL(backendUrl);
     mainWindow.once('ready-to-show', () => {
       mainWindow.show();
+    });
+    // 注入 Electron 标识，页面加载完成后触发
+    mainWindow.webContents.on('did-finish-load', () => {
+      injectElectronFlag(mainWindow);
     });
   });
   
@@ -125,17 +135,29 @@ function createTray() {
     if (tray) {
       const contextMenu = Menu.buildFromTemplate([
         { label: '显示控制板', click: () => { mainWindow.show(); mainWindow.focus(); } },
+        { label: '👤 账号同步（跨端登录）', click: () => {
+              mainWindow.show(); mainWindow.focus();
+              // 触发前端打开身份同步弹窗
+              mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.showAuth();").catch(() => {});
+            }
+        },
         { label: '修改服务器地址', click: () => {
-             // 强制跳转到配置页(即使当前连接正常)
              mainWindow.loadFile(path.join(__dirname, 'error.html'), { query: { url: backendUrl } });
              mainWindow.show();
              mainWindow.focus();
-          } 
+          }
+        },
+        { type: 'separator' },
+        { label: '⭐ GitHub 开源地址', click: () => shell.openExternal('https://github.com/iamafeng/HealthGuardian') },
+        { label: '☕ 赏作者一杯咖啡', click: () => {
+              mainWindow.show(); mainWindow.focus();
+              mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.show('donate-modal');").catch(() => {});
+          }
         },
         { type: 'separator' },
         { label: '彻底退出', click: () => { app.isQuiting = true; app.quit(); } }
       ]);
-      tray.setToolTip('HealthGuardian');
+      tray.setToolTip('HealthGuardian · 健康守护者');
       tray.setContextMenu(contextMenu);
       tray.on('double-click', () => {
         mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();

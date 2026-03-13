@@ -1,5 +1,9 @@
 # HealthGuardian (健康守护者) 🛰️
 
+[![GitHub Stars](https://img.shields.io/github/stars/iamafeng/HealthGuardian?style=flat-square&logo=github&color=00f2fe)](https://github.com/iamafeng/HealthGuardian)
+[![GitHub Forks](https://img.shields.io/github/forks/iamafeng/HealthGuardian?style=flat-square&logo=github)](https://github.com/iamafeng/HealthGuardian)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://github.com/iamafeng/HealthGuardian/blob/main/LICENSE)
+
 > **⚠️ 开发者备忘录 (Developer Rules)**
 > **【双文档同步约束】每次新功能开发或脚本调整完成后，必须立即同步更新 `README.md` 和 `快速运行.md` 这两个核心文档，确保项目功能描述与启动/打包脚本记录时刻保持最新对齐。相关的部署与启动脚本命令仅在 `快速运行.md` 中维护。**
 
@@ -24,7 +28,7 @@ HealthGuardian 采用混合架构模式，确保了 Web 技术的灵活性与桌
 *   **前端视觉**: HTML5 / CSS3 (Glassmorphism 拟物化设计) / Vanilla JavaScript
 *   **AI/CV 引擎**: TensorFlow.js (MoveNet 模型，实现零延迟本地姿态识别)
 *   **桌面外壳**: Electron (集成系统底层交互)
-*   **推送系统**: 支持钉钉/企业微信 Webhook 实时分发
+*   **推送系统**: 支持钉钉/企业微信 Webhook 实时分发（[钉钉配置教程 →](快速运行.md)）
 *   **运维自动化**: 完善的 Shell 脚本体系 (`start.sh`, `stop.sh`, `backup.sh`, `rollback.sh`)
 
 ---
@@ -88,6 +92,56 @@ HealthGuardian/
 - [x] **V3.5 — AI 健康日报**: 模板化日报引擎，每日首次访问自动弹出，数据驱动激励文案。
 - [x] **V3.5 — 健康搭子系统**: t_partner 表 @PostConstruct 自动建表，用户名邀请码绑定/解绑，实时搭子状态展示。
 - [x] **V3.5 — 智能提醒自适应**: MySQL 8 窗口函数分析历史打卡间隔，推荐最优频率，一键应用。
+- [x] **V4.0 — 健康小怪兽 (Pet)**: 侧边栏常驻「小健子」宠物，打卡活力动态更新（🥚→🤩），坏坐姿联动🤒。
+- [x] **V4.0 — 搭子电击提醒**: 搭子卡片一键「⚡ 提醒」，通过 Webhook 向对方发送督促消息。
+- [x] **V4.0 — 隐藏成就彩蛋**: 4 个神秘成就（午夜幽灵/补水冠军/黎明战士/宠物达人），解锁时动画弹出。
+- [x] **V4.0 — Electron 同步增强**: 托盘菜单新增「账号同步」和「赏作者咖啡」入口，桌面端自动显示跨端同步引导条。
+- [x] **V4.0 — 多主题兼容**: 新增 forest/ocean 专项 CSS 覆盖规则，全主题弹窗/输入框/按钮完美渲染。
 
 ---
 > *不仅仅是一个软件，更是您通往数字巅峰的健康底座。*
+
+---
+
+## 🤖 钉钉机器人配置（3 分钟快速上手）
+
+> 详细图文教程见 [快速运行.md → 第 5 节](快速运行.md)
+
+1. 打开钉钉群 → **群设置** → **智能群助手** → **添加机器人** → 选择 **自定义**
+2. 安全设置选 **自定义关键词**，填写以下关键词（必填，否则消息被拦截）：
+
+   ```
+   Health    提醒    告警    激励    专注
+   ```
+
+3. 点击完成，复制 Webhook 地址（格式：`https://oapi.dingtalk.com/robot/send?access_token=xxx`）
+4. 粘贴到 HealthGuardian → **🔔 推送与通知** → 保存即可
+
+> 💡 企业微信机器人同样支持，直接替换 Webhook 地址，无需任何代码改动。
+
+---
+
+## ☕ 支持作者 (Buy Me a Coffee)
+
+如果这个项目对你有帮助，欢迎打赏支持，让我保持持续创作的动力！
+
+<div align="center">
+<table>
+<tr>
+<td align="center">
+<img src="src/main/resources/static/qrCode/weixinpay.png" width="160" height="160" alt="微信打赏" /><br/>
+🟢 微信支付
+</td>
+<td align="center">
+<img src="src/main/resources/static/qrCode/alipay.png" width="160" height="160" alt="支付宝打赏" /><br/>
+🔵 支付宝
+</td>
+</tr>
+</table>
+</div>
+
+也欢迎给项目点个 ⭐ Star，这也是对作者最大的鼓励！
+
+👉 **[https://github.com/iamafeng/HealthGuardian](https://github.com/iamafeng/HealthGuardian)**
+
+

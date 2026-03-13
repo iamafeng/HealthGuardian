@@ -263,8 +263,12 @@ const CV = {
                     }
                     this.badPostureFrames = 0;
                 }
+                // 同步宠物状态
+                if (typeof Pet !== 'undefined') Pet.setBadPosture(true);
             } else {
                 this.badPostureFrames = Math.max(0, this.badPostureFrames - 2);
+                // 恢复正常时清除宠物病态
+                if (this.badPostureFrames === 0 && typeof Pet !== 'undefined') Pet.setBadPosture(false);
             }
         } catch(e) {
             // Ignore frame errors

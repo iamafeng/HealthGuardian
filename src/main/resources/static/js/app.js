@@ -80,22 +80,49 @@ const App = {
             medalMap: {
                 'EARLY_BIRD': '🐦', 'NIGHT_OWL': '🦉', 'WATER_BUFFALO': '💧',
                 'PERSISTENCE': '♾️', 'FOCUS_MASTER': '🧠', 'PRODUCTIVITY_BEAST': '🐯',
-                'STRETCH_EXPERT': '🤸', 'COMMUNITY_STAR': '🎖️'
+                'STRETCH_EXPERT': '🤸', 'COMMUNITY_STAR': '🎖️',
+                'MIDNIGHT_GHOST': '👻', 'HYDRO_CHAMPION': '🏆', 'DAWN_WARRIOR': '🌅', 'PET_LOVER': '🐾'
             }
         },
         reminders: [],
         achievementsData: [],
+        pet: { drinkToday: 0, restToday: 0 },
     },
 
     async init() {
         this.applyTheme(this.state.theme);
         this.setupPWA();
+        // 检测 Electron 桌面端环境
+        this._isElectron = !!(typeof window !== 'undefined' &&
+            ((typeof process !== 'undefined' && process.versions && process.versions.electron) ||
+             window.isElectronApp));
+        // 延迟检测（因为 isElectronApp 是页面加载后注入的）
+        setTimeout(() => {
+            this._isElectron = this._isElectron || !!window.isElectronApp;
+            this._updateElectronBadge();
+        }, 1200);
         if (!this.state.secretKey) {
             UI.modal.show('welcome-modal');
         } else {
             await this.loadData();
             this.startGlobalBackgroundTimer();
             this.checkDailyBrief();
+        }
+    },
+
+    // 更新 Electron 桌面端同步提示
+    _updateElectronBadge() {
+        const badge = document.getElementById('electron-sync-bar');
+        if (!badge) return;
+        if (this._isElectron) {
+            badge.style.display = 'block';
+            if (this.state.isRegistered) {
+                badge.innerHTML = `<span style="color:var(--success)">✅ 桌面版 · 账号已同步</span><br><span style="font-size:0.6rem;opacity:0.6">网页端用相同账号登录即可同步数据</span>`;
+            } else {
+                badge.innerHTML = `<span style="color:var(--warning)">🖥️ 桌面版 · 当前为匿名模式</span><br><span style="font-size:0.6rem;opacity:0.7">点击 <strong>👤 身份同步</strong> 创建账号，即可在网页端同步所有数据</span>`;
+            }
+        } else {
+            badge.style.display = 'none';
         }
     },
 
@@ -171,6 +198,7 @@ const App = {
                 UI.renderUser(res);
                 UI.renderReminders(res.configs);
                 this.refreshDashboard();
+                this._updateElectronBadge();
 
                 if (keyExpired) {
                     setTimeout(() => UI.toast('⚠️ 上次会话已失效，已建立新身份。如需恢复账号数据，请点击「身份同步」登录', 'warning'), 800);
@@ -216,14 +244,25 @@ const App = {
             UI.renderStreak(streak);
             UI.renderHeatmap(heatmap);
             this.state.achievementsData = achievements;
+            // 同步宠物状态
+            const drinkCount = stats.today.find(i => i.remind_type === 'DRINK')?.count || 0;
+            const restCount = stats.today.find(i => i.remind_type === 'SEDENTARY')?.count || 0;
+            this.state.pet.drinkToday = Number(drinkCount);
+            this.state.pet.restToday = Number(restCount);
+            Pet.update(this.state.pet.drinkToday, this.state.pet.restToday);
         } catch (e) { }
     },
 
-    async completeTask(type, btnElement) {
+    async completeTask(type, btnElement, fromPet = false) {
         await API.post('/api/complete', { type, secretKey: this.state.secretKey });
         const r = this.state.reminders.find(it => it.remind_type === type);
         if (r) r.lastNotified = new Date().getTime();
         UI.toast('记录已同步至云端', 'success');
+
+        // 更新宠物状态
+        if (type === 'DRINK') { this.state.pet.drinkToday++; if (fromPet) API.post('/api/pet/feed', { secretKey: this.state.secretKey }); }
+        if (type === 'SEDENTARY') this.state.pet.restToday++;
+        Pet.update(this.state.pet.drinkToday, this.state.pet.restToday);
 
         const isGuest = this.state.username.startsWith('访客_') || this.state.username === '匿名用户';
         const nickname = isGuest ? "神秘特工" : this.state.username;
@@ -435,9 +474,11 @@ h1{font-size:1.5rem;background:linear-gradient(to right,#00f2fe,#4facfe);-webkit
             return;
         }
         try {
-            const data = await API.get('/api/partner/my-code', { secretKey: this.state.secretKey });
-            const partnerStats = await API.get('/api/partner/stats', { myKey: this.state.secretKey });
-            UI.renderPartnerModal(data, partnerStats);
+            const [data, partnerStats] = await Promise.all([
+                API.get('/api/partner/my-code', { secretKey: this.state.secretKey }),
+                API.get('/api/partner/stats', { myKey: this.state.secretKey })
+            ]);
+            UI.renderPartnerModal(data, Array.isArray(partnerStats) ? partnerStats : []);
             UI.modal.show('partner-modal');
         } catch (e) { UI.toast('加载失败，请重试', 'error'); }
     },
@@ -457,6 +498,12 @@ h1{font-size:1.5rem;background:linear-gradient(to right,#00f2fe,#4facfe);-webkit
         await API.post('/api/partner/unbind', { myKey: this.state.secretKey, partnerKey });
         UI.toast('已解除搭子关系', 'success');
         this.openPartnerModal();
+    },
+
+    async nudgePartner(partnerKey) {
+        UI.toast('⚡ 正在发送电击提醒...', 'info');
+        const res = await API.post('/api/partner/nudge', { myKey: this.state.secretKey, partnerKey });
+        UI.toast(res.msg || '提醒已发出', res.success ? 'success' : 'warning');
     },
 
     // --- ⚡ 智能提醒自适应 ---
@@ -663,11 +710,22 @@ const UI = {
 
     renderAchievements(data) {
         const container = document.getElementById('achievements-container');
-        container.innerHTML = data.map(a => `
-            <div class="ach-item ${a.is_achieved ? 'active' : ''}" data-tip="${a.name}: ${a.description}">
-                <div style="font-size:1.5rem; margin-bottom:5px">${App.state.meta.medalMap[a.code] || '🏅'}</div>
-                <div style="font-size:0.6rem; font-weight:700">${a.name}</div>
-            </div>`).join('');
+        const prevAchieved = new Set((App.state.achievementsData || []).filter(a => a.is_achieved).map(a => a.code));
+        container.innerHTML = data.map(a => {
+            const isHidden = a.is_hidden == 1;
+            const isAchieved = a.is_achieved == 1;
+            const emoji = App.state.meta.medalMap[a.code] || '🏅';
+            const displayEmoji = isHidden && !isAchieved ? '🔒' : emoji;
+            const displayName = isHidden && !isAchieved ? '???' : a.name;
+            const justUnlocked = isAchieved && !prevAchieved.has(a.code);
+            return `
+            <div class="ach-item ${isAchieved ? 'active' : ''} ${justUnlocked ? 'just-unlocked' : ''}" 
+                 ${isHidden ? 'data-hidden="true"' : ''} 
+                 data-tip="${isHidden && !isAchieved ? '🔒 隐藏成就，继续探索解锁' : a.name + ': ' + a.description}">
+                <div class="ach-emoji" style="font-size:1.5rem; margin-bottom:5px">${displayEmoji}</div>
+                <div style="font-size:0.6rem; font-weight:700">${displayName}</div>
+            </div>`;
+        }).join('');
     },
 
     renderDailyBrief(data, username) {
@@ -723,7 +781,10 @@ const UI = {
                 <div class="partner-card">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <span style="font-weight:700;font-size:0.9rem">👤 ${p.username}</span>
-                        <button onclick="App.unbindPartner('${p.partner_key}')" class="btn-outline" style="margin:0;padding:4px 10px;font-size:0.65rem;width:auto;color:var(--accent);border-color:var(--accent)">解除</button>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="App.nudgePartner('${p.partner_key}')" class="btn-outline" style="margin:0;padding:4px 10px;font-size:0.65rem;width:auto;color:var(--warning);border-color:var(--warning)">⚡ 提醒</button>
+                            <button onclick="App.unbindPartner('${p.partner_key}')" class="btn-outline" style="margin:0;padding:4px 10px;font-size:0.65rem;width:auto;color:var(--accent);border-color:var(--accent)">解除</button>
+                        </div>
                     </div>
                     <div style="display:flex;gap:16px;margin-top:10px;font-size:0.78rem">
                         <span>💧 今日补给: <strong style="color:var(--primary)">${p.drink_count}</strong></span>
@@ -1177,6 +1238,64 @@ const AmbientSound = {
         });
     }
 };
+// ─── 🐾 Pet 健康小怪兽模块 ────────────────────────────────────────────────────
+const Pet = {
+    _badPostureMode: false,
+
+    // 根据今日打卡数更新宠物状态
+    update(drinkToday, restToday) {
+        const total = drinkToday + restToday;
+        let emoji, mood, hp;
+
+        if (this._badPostureMode) {
+            emoji = '🤒'; mood = '主人坐姿不对，我不舒服...'; hp = Math.max(10, total * 6);
+        } else if (total === 0) {
+            emoji = '🥚'; mood = '还是个蛋，等主人打卡孵化我！'; hp = 5;
+        } else if (total < 3) {
+            emoji = '😴'; mood = `主人加油呀，今天才打卡 ${total} 次...`; hp = 20 + total * 8;
+        } else if (total < 6) {
+            emoji = '😐'; mood = `不错，今天已打卡 ${total} 次，继续保持！`; hp = 40 + total * 6;
+        } else if (total < 10) {
+            emoji = '😊'; mood = `棒棒的！${total} 次打卡，我很开心！`; hp = 65 + total * 3;
+        } else {
+            emoji = '🤩'; mood = `哇！${total} 次！主人今天太厉害了！🎉`; hp = 100;
+        }
+
+        const hpClamped = Math.min(100, hp);
+        const emojiEl = document.getElementById('pet-emoji');
+        const moodEl = document.getElementById('pet-mood');
+        const hpBar = document.getElementById('pet-hp-bar');
+        const modalEmoji = document.getElementById('pet-modal-emoji');
+        const modalHp = document.getElementById('pet-modal-hp');
+        const modalHpTxt = document.getElementById('pet-modal-hp-text');
+        const modalMsg = document.getElementById('pet-modal-msg');
+        const statDrink = document.getElementById('pet-stat-drink');
+        const statRest = document.getElementById('pet-stat-rest');
+
+        if (emojiEl) emojiEl.innerText = emoji;
+        if (moodEl) moodEl.innerText = mood;
+        if (hpBar) hpBar.style.width = hpClamped + '%';
+        if (modalEmoji) modalEmoji.innerText = emoji;
+        if (modalHp) modalHp.style.width = hpClamped + '%';
+        if (modalHpTxt) modalHpTxt.innerText = `活力值 ${hpClamped}%`;
+        if (modalMsg) modalMsg.innerText = mood;
+        if (statDrink) statDrink.innerText = drinkToday;
+        if (statRest) statRest.innerText = restToday;
+
+        // HP 低时让宠物动画加速提示
+        const widget = document.getElementById('health-pet-widget');
+        if (widget) {
+            widget.style.borderColor = hpClamped < 30 ? 'rgba(244,63,94,0.5)' : 'var(--border)';
+        }
+    },
+
+    // CV 坐姿检测回调
+    setBadPosture(isBad) {
+        this._badPostureMode = isBad;
+        this.update(App.state.pet.drinkToday, App.state.pet.restToday);
+    }
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 
 App.init();

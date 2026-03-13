@@ -2,6 +2,11 @@
   "name": "health-guardian-desktop",
   "version": "1.0.0",
   "description": "HealthGuardian 桌面端",
+  "author": "iamafeng",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iamafeng/HealthGuardian.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",

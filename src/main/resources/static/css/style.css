@@ -1295,3 +1295,75 @@ body[data-theme="ocean"] .weather-bar {
     align-self: start;
 }
 
+/* ─── 🖥️ 桌面版下载横幅 ──────────────────────────────────────────────────── */
+.download-banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 25px 16px;
+    flex-wrap: wrap;
+}
+
+.download-btn-exe {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 22px;
+    background: linear-gradient(135deg, var(--secondary), var(--primary));
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 0.82rem;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: box-shadow 0.25s, transform 0.25s;
+    box-shadow: 0 4px 18px rgba(0, 242, 254, 0.25);
+    letter-spacing: 0.3px;
+}
+
+.download-btn-exe:hover {
+    box-shadow: 0 6px 28px rgba(0, 242, 254, 0.45);
+    transform: translateY(-2px);
+}
+
+.download-btn-release {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: border-color 0.25s, color 0.25s;
+}
+
+.download-btn-release:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* 亮色主题适配 */
+body[data-theme="light"] .download-btn-exe {
+    color: #ffffff;
+    box-shadow: 0 4px 18px rgba(37, 99, 235, 0.25);
+}
+body[data-theme="light"] .download-btn-exe:hover {
+    box-shadow: 0 6px 28px rgba(37, 99, 235, 0.4);
+}
+body[data-theme="light"] .download-btn-release {
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #64748b;
+}
+body[data-theme="light"] .download-btn-release:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* 森林主题 */
+body[data-theme="forest"] .download-btn-exe {
+    color: #052e16;
+}
+/* 深海主题 */
+body[data-theme="ocean"] .download-btn-exe {
+    color: #0c0a1a;
+}

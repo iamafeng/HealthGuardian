@@ -3,11 +3,32 @@
 [![GitHub Stars](https://img.shields.io/github/stars/iamafeng/HealthGuardian?style=flat-square&logo=github&color=00f2fe)](https://github.com/iamafeng/HealthGuardian)
 [![GitHub Forks](https://img.shields.io/github/forks/iamafeng/HealthGuardian?style=flat-square&logo=github)](https://github.com/iamafeng/HealthGuardian)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://github.com/iamafeng/HealthGuardian/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/iamafeng/HealthGuardian?style=flat-square&logo=github&color=10b981&label=最新版本)](https://github.com/iamafeng/HealthGuardian/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/iamafeng/HealthGuardian/total?style=flat-square&logo=windows&color=4facfe&label=桌面版下载量)](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe)
+
+<div align="center">
+
+**[📥 下载 Windows 桌面版 (.exe)](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe)**　·　**[📦 所有 Releases](https://github.com/iamafeng/HealthGuardian/releases)**　·　**[🌐 在线体验](http://health.afenghu.com/)**
+
+</div>
+
+---
 
 > **⚠️ 开发者备忘录 (Developer Rules)**
 > **【双文档同步约束】每次新功能开发或脚本调整完成后，必须立即同步更新 `README.md` 和 `快速运行.md` 这两个核心文档，确保项目功能描述与启动/打包脚本记录时刻保持最新对齐。相关的部署与启动脚本命令仅在 `快速运行.md` 中维护。**
 
 这是一个融合了 **Java Spring Boot 后端**、**Electron 桌面壳层**与 **TensorFlow.js 计算机视觉**的全维度健康守护平台。它不仅仅是一个提醒工具，更是一个通过 AI 技术实时监测用户状态的智能健康底座。
+
+---
+
+## ⬇️ 桌面版下载
+
+| 平台 | 下载链接 | 说明 |
+|---|---|---|
+| 🪟 Windows | [**HealthGuardian-Setup.exe**](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe) | NSIS 安装包，双击即装 |
+| 📦 历史版本 | [GitHub Releases](https://github.com/iamafeng/HealthGuardian/releases) | 所有历史版本归档 |
+
+> **无需自己打包**，直接下载安装程序。桌面版支持系统托盘、全局快捷键 `Ctrl+Shift+H`、健康灵动岛 `Ctrl+Shift+W` 等原生功能。
 
 ---
 

@@ -87,6 +87,12 @@ const App = {
         reminders: [],
         achievementsData: [],
         pet: { drinkToday: 0, restToday: 0 },
+        // 🌙 夜间免打扰（从 localStorage 读取默认值，loadData 后从服务器同步）
+        quietHours: {
+            enabled: localStorage.getItem('hg_quiet_enabled') !== 'false',
+            start:   localStorage.getItem('hg_quiet_start') || '21:00',
+            end:     localStorage.getItem('hg_quiet_end')   || '07:00',
+        },
     },
 
     async init() {
@@ -133,6 +139,21 @@ const App = {
         if (Notification.permission === 'default') Notification.requestPermission();
     },
 
+    // --- 🌙 夜间免打扰判断 ---
+    isInQuietHours() {
+        const q = this.state.quietHours;
+        if (!q || !q.enabled) return false;
+        const now = new Date();
+        const cur = now.getHours() * 60 + now.getMinutes();
+        const [sh, sm] = (q.start || '21:00').split(':').map(Number);
+        const [eh, em] = (q.end   || '07:00').split(':').map(Number);
+        const start = sh * 60 + sm;
+        const end   = eh * 60 + em;
+        // 跨午夜区间（如 21:00 → 07:00）
+        if (start > end) return cur >= start || cur < end;
+        return cur >= start && cur < end;
+    },
+
     // --- 核心：全局后台巡检定时器 ---
     startGlobalBackgroundTimer() {
         setInterval(() => {
@@ -140,8 +161,13 @@ const App = {
             this.state.reminders.forEach(r => {
                 const intervalMs = r.interval_minutes * 60 * 1000;
                 if (now - r.lastNotified >= intervalMs) {
-                    this.triggerAlarm(r);
-                    r.lastNotified = now;
+                    if (this.isInQuietHours()) {
+                        // 夜间免打扰：静默跳过，但重置计时（避免结束时连续轰炸）
+                        r.lastNotified = now;
+                    } else {
+                        this.triggerAlarm(r);
+                        r.lastNotified = now;
+                    }
                 }
             });
         }, 60000);
@@ -192,6 +218,14 @@ const App = {
                     document.getElementById('webhook-enable-cb').checked = res.isWebhookEnabled !== false && res.isWebhookEnabled !== 0;
                     document.getElementById('desktop-notify-cb').checked = localDesktopNotify !== 'false';
                 }
+                // 🌙 同步夜间免打扰设置（服务端优先，降级到 localStorage）
+                const qEnabled = res.quietEnabled !== undefined ? (res.quietEnabled == 1) : this.state.quietHours.enabled;
+                const qStart   = res.quietStart || this.state.quietHours.start;
+                const qEnd     = res.quietEnd   || this.state.quietHours.end;
+                this.state.quietHours = { enabled: qEnabled, start: qStart, end: qEnd };
+                localStorage.setItem('hg_quiet_enabled', qEnabled);
+                localStorage.setItem('hg_quiet_start',   qStart);
+                localStorage.setItem('hg_quiet_end',     qEnd);
                 this.state.reminders = res.configs.map(c => ({
                     ...c, lastNotified: new Date().getTime()
                 }));
@@ -352,16 +386,29 @@ const App = {
         UI.updateNotifyPermBtn();
     },
 
-    async saveWebhook(url, webhookEnabled, desktopEnabled) {
+    async saveWebhook(url, webhookEnabled, desktopEnabled, quietEnabled = true, quietStart = '21:00', quietEnd = '07:00') {
         localStorage.setItem('desktop_notify_enabled', desktopEnabled);
-        // 访客模式：仅保存本地通知偏好，不调用 Webhook API
+        // 🌙 保存夜间免打扰到内存 + localStorage
+        this.state.quietHours = { enabled: !!quietEnabled, start: quietStart || '21:00', end: quietEnd || '07:00' };
+        localStorage.setItem('hg_quiet_enabled', !!quietEnabled);
+        localStorage.setItem('hg_quiet_start',   quietStart || '21:00');
+        localStorage.setItem('hg_quiet_end',     quietEnd   || '07:00');
+
+        // 访客模式：仅保存本地偏好，不调用 Webhook API
         if (!this.state.isRegistered) {
             UI.toast('本地通知设置已保存（Webhook 推送需绑定账号后可用）', 'success');
             UI.modal.hide('webhook-modal');
             return;
         }
-        await API.post('/api/user/webhook', { secretKey: this.state.secretKey, webhookUrl: url, enabled: webhookEnabled ? 1 : 0 });
-        UI.toast('推送链路与本地通知已更新', 'success');
+        await API.post('/api/user/webhook', {
+            secretKey: this.state.secretKey,
+            webhookUrl: url,
+            enabled:      webhookEnabled ? 1 : 0,
+            quietEnabled: quietEnabled    ? 1 : 0,
+            quietStart:   quietStart || '21:00',
+            quietEnd:     quietEnd   || '07:00',
+        });
+        UI.toast('推送链路与免打扰设置已更新 🌙', 'success');
         UI.modal.hide('webhook-modal');
         this.loadData();
     },
@@ -879,6 +926,16 @@ const UI = {
         showWebhook() {
             this.show('webhook-modal');
             UI.updateNotifyPermBtn();
+            // 🌙 回填夜间免打扰状态
+            const q = App.state.quietHours;
+            const cb = document.getElementById('quiet-hours-cb');
+            const row = document.getElementById('quiet-time-row');
+            const qs = document.getElementById('quiet-start');
+            const qe = document.getElementById('quiet-end');
+            if (cb) { cb.checked = q.enabled; }
+            if (row) { row.style.display = q.enabled ? 'flex' : 'none'; }
+            if (qs)  { qs.value = q.start || '21:00'; }
+            if (qe)  { qe.value = q.end   || '07:00'; }
         },
         showSettings() {
             document.querySelectorAll('.theme-btn[data-theme]').forEach(b => {

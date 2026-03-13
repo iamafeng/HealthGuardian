@@ -439,10 +439,15 @@ public class ReminderController {
     }
 
     @PostMapping("/user/webhook")
-    public String updateWebhook(@RequestParam String secretKey, @RequestParam String webhookUrl,
-            @RequestParam Integer enabled) {
-        jdbcTemplate.update("UPDATE t_user SET webhook_url = ?, is_webhook_enabled = ? WHERE secret_key = ?",
-                webhookUrl, enabled, secretKey);
+    public String updateWebhook(@RequestParam String secretKey,
+            @RequestParam String webhookUrl,
+            @RequestParam Integer enabled,
+            @RequestParam(required = false, defaultValue = "1")      Integer quietEnabled,
+            @RequestParam(required = false, defaultValue = "21:00")  String quietStart,
+            @RequestParam(required = false, defaultValue = "07:00")  String quietEnd) {
+        jdbcTemplate.update(
+            "UPDATE t_user SET webhook_url=?, is_webhook_enabled=?, quiet_enabled=?, quiet_start=?, quiet_end=? WHERE secret_key=?",
+            webhookUrl, enabled, quietEnabled, quietStart, quietEnd, secretKey);
         return "OK";
     }
 

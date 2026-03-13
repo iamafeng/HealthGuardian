@@ -249,14 +249,38 @@
             <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:0.85rem; color:var(--text-dim)">
                 <input type="checkbox" id="desktop-notify-cb" checked> 允许桌面端及浏览器弹窗通知
             </label>
-            <div style="margin-top:10px; margin-bottom:20px">
+            <div style="margin-top:10px; margin-bottom:16px">
                 <button id="notify-perm-btn" class="btn-outline"
                     style="font-size:0.75rem; padding:7px 14px; width:100%"
                     onclick="App.requestBrowserNotify()">🔔 开启浏览器推送权限</button>
                 <div id="notify-perm-status" style="font-size:0.7rem; color:var(--text-dim); margin-top:6px; text-align:center; line-height:1.4"></div>
             </div>
+
+            <!-- 🌙 夜间免打扰 -->
+            <div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:18px">
+                <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-dim); margin-bottom:12px; cursor:pointer">
+                    <input type="checkbox" id="quiet-hours-cb"
+                        onchange="document.getElementById('quiet-time-row').style.display=this.checked?'flex':'none'">
+                    🌙 开启夜间免打扰（静默，不发任何通知）
+                </label>
+                <div id="quiet-time-row" style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:rgba(0,0,0,0.15); border-radius:10px; flex-wrap:wrap">
+                    <span style="font-size:0.78rem; color:var(--text-dim); white-space:nowrap">🕙 免打扰时段</span>
+                    <input type="time" id="quiet-start" value="21:00" class="quiet-time-input">
+                    <span style="font-size:0.78rem; color:var(--text-dim)">至</span>
+                    <input type="time" id="quiet-end" value="07:00" class="quiet-time-input">
+                    <span style="font-size:0.68rem; color:var(--text-dim); opacity:0.7">（支持跨午夜，如 21:00 → 07:00）</span>
+                </div>
+            </div>
+
             <button class="btn-action" style="width:100%"
-                onclick="App.saveWebhook(document.getElementById('auth-webhook').value, document.getElementById('webhook-enable-cb').checked, document.getElementById('desktop-notify-cb').checked)">保存配置</button>
+                onclick="App.saveWebhook(
+                    document.getElementById('auth-webhook').value,
+                    document.getElementById('webhook-enable-cb').checked,
+                    document.getElementById('desktop-notify-cb').checked,
+                    document.getElementById('quiet-hours-cb').checked,
+                    document.getElementById('quiet-start').value,
+                    document.getElementById('quiet-end').value
+                )">保存配置</button>
             <button class="btn-outline" onclick="UI.modal.hide('webhook-modal')">返回</button>
         </div>
     </div>

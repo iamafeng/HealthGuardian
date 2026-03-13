@@ -1121,6 +1121,45 @@ body[data-theme="ocean"] .ach-item.active {
     filter: blur(3px);
 }
 
+/* ─── 🌙 夜间免打扰时间选择器 ───────────────────────────────────────────── */
+.quiet-time-input {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    font-family: var(--font-mono);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--primary);
+    outline: none;
+    transition: 0.25s;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
+.quiet-time-input:focus,
+.quiet-time-input:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.1);
+}
+
+/* WebKit 时间选择器图标着色 */
+.quiet-time-input::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.5);
+    cursor: pointer;
+}
+
+body[data-theme="light"] .quiet-time-input {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: var(--primary);
+}
+
+body[data-theme="light"] .quiet-time-input::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 0.5;
+}
+
 /* ─── 🌐 页脚 ───────────────────────────────────────────────────────────── */
 .site-footer {
     max-width: 1400px;

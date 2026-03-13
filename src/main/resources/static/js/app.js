@@ -114,6 +114,8 @@ const App = {
             this.startGlobalBackgroundTimer();
             this.checkDailyBrief();
         }
+        // P5 环境感知 — 始终初始化（访客和登录用户均可用）
+        Weather.init();
     },
 
     // 更新 Electron 桌面端同步提示
@@ -325,6 +327,12 @@ const App = {
     // --- 专注逻辑 ---
     startPomo() {
         this.state.pomo.isRunning = true;
+        // 同步番茄钟状态到灵动岛 widget
+        localStorage.setItem('hg_pomo_state', JSON.stringify({
+            running: true,
+            endAt: Date.now() + this.state.pomo.timeLeft * 1000,
+            duration: 25 * 60
+        }));
         UI.updatePomoState(true);
         this.state.pomo.interval = setInterval(() => {
             this.state.pomo.timeLeft--;
@@ -337,12 +345,14 @@ const App = {
         clearInterval(this.state.pomo.interval);
         this.state.pomo.timeLeft = 25 * 60;
         this.state.pomo.isRunning = false;
+        localStorage.removeItem('hg_pomo_state'); // 清除灵动岛倒计时
         UI.updatePomoTimer(this.state.pomo.timeLeft);
         UI.updatePomoState(false);
     },
 
     async finishPomo() {
         clearInterval(this.state.pomo.interval);
+        localStorage.removeItem('hg_pomo_state'); // 清除灵动岛倒计时
         UI.toast('专注目标达成', 'success');
         await API.post('/api/pomodoro/complete', { secretKey: this.state.secretKey });
         const isGuest = this.state.username.startsWith('访客_') || this.state.username === '匿名用户';
@@ -425,8 +435,6 @@ const App = {
         await this.loadData();
         this.startGlobalBackgroundTimer();
     },
-
-    // --- 主题切换 ---
     applyTheme(name) {
         const vars = Themes[name] || Themes.cyber;
         const root = document.documentElement;
@@ -1350,6 +1358,90 @@ const Pet = {
     setBadPosture(isBad) {
         this._badPostureMode = isBad;
         this.update(App.state.pet.drinkToday, App.state.pet.restToday);
+    }
+};
+
+// ─── 🌦️ Weather 环境感知模块 (P5) ───────────────────────────────────────────
+const Weather = {
+    _data: null,
+
+    async init() {
+        await this._fetch();
+        setInterval(() => this._fetch(), 30 * 60 * 1000); // 每 30 分钟刷新
+    },
+
+    async _fetch() {
+        if (!navigator.geolocation) return;
+        try {
+            const pos = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    timeout: 10000,
+                    maximumAge: 3600000 // 允许用缓存坐标（1小时）
+                });
+            });
+            const { latitude, longitude } = pos.coords;
+            const resp = await fetch(
+                `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current_weather=true&timezone=auto`
+            );
+            if (!resp.ok) return;
+            const json = await resp.json();
+            const cw = json.current_weather;
+            const info = this._codeToInfo(cw.weathercode);
+            this._data = {
+                icon: info.icon,
+                label: info.label,
+                rainy: info.rainy,
+                temp: Math.round(cw.temperature),
+                code: cw.weathercode,
+                windspeed: Math.round(cw.windspeed)
+            };
+            localStorage.setItem('hg_weather', JSON.stringify(this._data));
+            this._render();
+            this._autoSound();
+        } catch (e) {
+            // 定位被拒绝或网络错误 — 静默失败，不影响其余功能
+        }
+    },
+
+    _codeToInfo(code) {
+        if (code === 0)  return { icon: '☀️',  label: '晴天',   rainy: false };
+        if (code <= 3)   return { icon: '⛅',  label: '多云',   rainy: false };
+        if (code <= 48)  return { icon: '🌫️', label: '雾/霾',  rainy: false };
+        if (code <= 57)  return { icon: '🌦️', label: '毛毛雨', rainy: true  };
+        if (code <= 67)  return { icon: '🌧️', label: '下雨',   rainy: true  };
+        if (code <= 77)  return { icon: '❄️',  label: '降雪',   rainy: false };
+        if (code <= 82)  return { icon: '🌧️', label: '阵雨',   rainy: true  };
+        if (code <= 86)  return { icon: '🌨️', label: '阵雪',   rainy: false };
+        if (code <= 99)  return { icon: '⛈️', label: '雷暴',   rainy: true  };
+        return { icon: '🌡️', label: '未知', rainy: false };
+    },
+
+    // 下雨时自动切换雨声氛围音
+    _autoSound() {
+        if (!this._data || !this._data.rainy) return;
+        if (typeof AmbientSound !== 'undefined' && AmbientSound._type !== 'rain') {
+            AmbientSound.play('rain');
+            UI.toast(`🌧️ 检测到${this._data.label}，已自动切换雨声氛围`, 'info');
+        }
+    },
+
+    _render() {
+        if (!this._data) return;
+        const bar = document.getElementById('weather-bar');
+        const statusEl = document.getElementById('weather-status');
+        const tipEl = document.getElementById('weather-tip');
+        if (bar) bar.style.display = 'flex';
+        if (statusEl) {
+            statusEl.innerHTML = `${this._data.icon} <strong>${this._data.temp}°C</strong> · ${this._data.label}`;
+        }
+        if (tipEl) {
+            const msg = this._data.rainy
+                ? '☂️ 雨天已自动开启雨声氛围音 🌧️'
+                : this._data.temp >= 32 ? '🔆 高温天气，记得多喝水！'
+                : this._data.temp <= 5  ? '🧥 天气寒冷，注意保暖补水'
+                : '💚 天气宜人，保持好状态';
+            tipEl.textContent = msg;
+        }
     }
 };
 

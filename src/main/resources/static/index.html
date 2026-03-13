@@ -117,6 +117,12 @@
                 正在同步环境传感器数据...
             </div>
 
+            <!-- 🌦️ P5 环境感知天气栏 -->
+            <div id="weather-bar" class="weather-bar" style="display:none">
+                <div id="weather-status" class="weather-status">🌡️</div>
+                <div id="weather-tip" class="weather-tip"></div>
+            </div>
+
             <!-- 🔥 连续打卡 Streak -->
             <div id="streak-container" class="streak-container" style="display:none">
                 <span id="streak-fire" class="streak-fire active">🔥</span>
@@ -149,7 +155,7 @@
         </div>
 
         <!-- 3. 排行榜 -->
-        <div class="glass-card card-side">
+        <div class="glass-card card-side card-right">
             <h2>🏆 全球功勋榜</h2>
             <div id="leaderboard"></div>
         </div>

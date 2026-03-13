@@ -37,9 +37,10 @@
 
 ### 🌌 V4.0 进化路线图 (创意储备) 🚀
 
-#### 1. 优先级 P0：🛡️ 桌面"健康灵动岛" (System Tray Interactive)
-- [ ] **Electron 悬浮窗**: 在 Windows/Mac 系统托盘实现一个缩小的实时监控窗。
-- [ ] **实时反馈**: 显示当前 Streak 火焰、番茄钟剩余时间，以及 CV 实时监测到的坐姿状态（探颈时变红）。
+#### 1. 优先级 P0：🛡️ 桌面"健康灵动岛" (System Tray Interactive) ✅ 已完成
+- [x] **Electron 悬浮窗**: 在 Windows/Mac 系统托盘实现一个缩小的实时监控窗（widget.html，`Ctrl+Shift+W` 切换）。
+- [x] **实时反馈**: 显示当前 Streak 火焰、番茄钟剩余时间（hg_pomo_state localStorage 桥接），以及 CV 实时监测到的坐姿状态（hg_posture_bad，探颈时变红）。
+- [x] **双击呼出**: 双击灵动岛窗口通过 IPC 呼出主窗口。
 
 #### 2. 优先级 P1：🎮 养成系"健康小怪兽" (Health Pet) ✅ 已完成
 - [x] **数字生命**: 引入基于 Emoji 动画的宠物「小健子」，嵌入侧边栏常驻展示。
@@ -60,8 +61,9 @@
 - [x] **UI 展示**: 未解锁的隐藏成就显示🔒，解锁时播放弹出动画。
 - [x] **后端检测**: `checkAchievements` 自动检测凌晨/黎明/大量补水等特殊行为。
 
-#### 6. 优先级 P5：🌡️ 环境感知协同 (Environment Context)
-- [ ] **天气联动**: 阴雨天自动切换"雨声"背景音并推送暖心文案。
+#### 6. 优先级 P5：🌡️ 环境感知协同 (Environment Context) ✅ 已完成
+- [x] **天气联动**: 通过 Open-Meteo 免费 API + 浏览器 Geolocation 获取实时天气；阴雨天自动切换"雨声"背景音并显示暖心提示；天气数据写入 hg_weather localStorage，灵动岛实时同步。
+- [x] **主页天气栏**: 主面板新增天气状态栏（weather-bar），展示温度/天气/提示文案，支持全 4 主题适配。
 - [ ] **外部日程**: 接入 Calendar，在会议结束后自动弹出拉伸引导。
 
 ---

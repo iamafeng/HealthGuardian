@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+html, body { width:240px; background:transparent; overflow:hidden; }
+
+.card {
+  background: rgba(10, 18, 35, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  border-radius: 18px;
+  padding: 10px 14px 9px;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  color: #f8fafc;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  transition: border-color 0.4s;
+}
+.card.bad-posture { border-color: rgba(244, 63, 94, 0.6); box-shadow: 0 0 20px rgba(244,63,94,0.25); }
+
+/* 拖拽区域 */
+.drag-header {
+  -webkit-app-region: drag;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.brand {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  background: linear-gradient(to right, #00f2fe, #4facfe);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.btns { -webkit-app-region: no-drag; display:flex; gap:4px; }
+.btn-ico {
+  background: rgba(255,255,255,0.06);
+  border: none; color: #64748b; cursor: pointer;
+  width: 18px; height: 18px; border-radius: 50%;
+  font-size: 0.6rem; display: flex; align-items:center; justify-content:center;
+  transition: 0.2s;
+}
+.btn-ico:hover { background: rgba(244,63,94,0.3); color: #f43f5e; }
+
+/* 四格数据 */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 7px; }
+.stat {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px; padding: 6px 8px; text-align: center;
+}
+.stat-val {
+  font-size: 1.05rem; font-weight: 800;
+  font-family: 'Courier New', monospace;
+  color: #00f2fe; line-height: 1;
+}
+.stat-lbl { font-size: 0.50rem; color: #64748b; margin-top: 2px; }
+.stat.pomo .stat-val { color: #fbbf24; }
+.stat.pomo.idle .stat-val { color: #10b981; }
+
+/* 进度条 */
+.pomo-bar { background: rgba(255,255,255,0.07); border-radius: 3px; height: 3px; margin-bottom: 6px; overflow:hidden; }
+.pomo-fill { height:100%; width:0%; background: linear-gradient(to right,#4facfe,#00f2fe); transition: width 1s linear; border-radius:3px; }
+
+/* 状态栏 */
+.status-row { display:flex; justify-content:space-between; align-items:center; font-size:0.55rem; color:#475569; gap:3px; }
+.badge {
+  display:inline-flex; align-items:center; gap:2px;
+  padding: 2px 6px; border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+}
+.badge.green { color:#10b981; }
+.badge.red   { color:#f43f5e; background: rgba(244,63,94,0.08); }
+.badge.dim   { color:#475569; }
+.badge.quiet { color:#6b7280; }
+.badge.weather { color:#93c5fd; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="card" id="card" ondblclick="openMain()">
+  <div class="drag-header">
+    <span class="brand">⚡ HealthGuardian</span>
+    <div class="btns">
+      <button class="btn-ico" title="最小化" onclick="minimize()">−</button>
+      <button class="btn-ico" title="关闭" onclick="closeWidget()">✕</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val" id="w-streak">—</div>
+      <div class="stat-lbl">🔥 连续打卡</div>
+    </div>
+    <div class="stat pomo idle" id="stat-pomo">
+      <div class="stat-val" id="w-pomo">休息中</div>
+      <div class="stat-lbl">⏱️ 专注倒计</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="w-drink">0</div>
+      <div class="stat-lbl">💧 今日补给</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="w-rest">0</div>
+      <div class="stat-lbl">🧘 今日调息</div>
+    </div>
+  </div>
+
+  <div class="pomo-bar"><div class="pomo-fill" id="w-pomo-fill"></div></div>
+
+  <div class="status-row">
+    <span class="badge green" id="w-posture">✅ 坐姿正常</span>
+    <span class="badge weather" id="w-weather">🌡️ —</span>
+    <span class="badge quiet" id="w-quiet" style="display:none">🌙 免打扰</span>
+  </div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+function closeWidget()   { ipcRenderer.send('widget-close'); }
+function minimize()      { ipcRenderer.send('widget-minimize'); }
+function openMain()      { ipcRenderer.send('widget-open-main'); }
+
+let secretKey = null;
+
+// ── 刷新统计数据（每 30s）─────────────────────────────────────────────
+async function refreshStats() {
+  secretKey = secretKey || localStorage.getItem('health_guardian_key');
+  if (!secretKey) return;
+  try {
+    const [stats, streak] = await Promise.all([
+      fetch(`/api/stats?secretKey=${secretKey}`).then(r => r.json()),
+      fetch(`/api/streak?secretKey=${secretKey}`).then(r => r.json()),
+    ]);
+    document.getElementById('w-streak').textContent = streak.streak ?? '—';
+    const drink = (stats.today || []).find(i => i.remind_type === 'DRINK')?.count || 0;
+    const rest  = (stats.today || []).find(i => i.remind_type === 'SEDENTARY')?.count || 0;
+    document.getElementById('w-drink').textContent = drink;
+    document.getElementById('w-rest').textContent  = rest;
+  } catch(e) {}
+}
+
+// ── 每秒更新番茄钟倒计时 ──────────────────────────────────────────────
+function tickPomo() {
+  try {
+    const raw = localStorage.getItem('hg_pomo_state');
+    const el  = document.getElementById('stat-pomo');
+    const txt = document.getElementById('w-pomo');
+    const fill = document.getElementById('w-pomo-fill');
+    if (!raw) { txt.textContent = '休息中'; el.className = 'stat pomo idle'; fill.style.width = '0%'; return; }
+    const s = JSON.parse(raw);
+    if (!s.running || !s.endAt) { txt.textContent = '休息中'; el.className = 'stat pomo idle'; fill.style.width = '0%'; return; }
+    const rem = Math.max(0, Math.ceil((s.endAt - Date.now()) / 1000));
+    if (rem === 0) { txt.textContent = '完成!'; el.className = 'stat pomo idle'; fill.style.width = '100%'; return; }
+    const m = Math.floor(rem / 60).toString().padStart(2,'0');
+    const sec = (rem % 60).toString().padStart(2,'0');
+    txt.textContent = `${m}:${sec}`;
+    el.className = 'stat pomo';
+    fill.style.width = Math.max(0, rem / (s.duration || 1500)) * 100 + '%';
+  } catch(e) {}
+}
+
+// ── 坐姿状态 ──────────────────────────────────────────────────────────
+function updatePosture() {
+  const bad = localStorage.getItem('hg_posture_bad') === '1';
+  const el  = document.getElementById('w-posture');
+  const card = document.getElementById('card');
+  if (bad) {
+    el.textContent = '⚠️ 坐姿异常'; el.className = 'badge red';
+    card.classList.add('bad-posture');
+  } else {
+    el.textContent = '✅ 坐姿正常'; el.className = 'badge green';
+    card.classList.remove('bad-posture');
+  }
+}
+
+// ── 天气状态 ───────────────────────────────────────────────────────────
+function updateWeather() {
+  try {
+    const raw = localStorage.getItem('hg_weather');
+    const el = document.getElementById('w-weather');
+    if (!raw) { el.textContent = '🌡️ —'; return; }
+    const w = JSON.parse(raw);
+    el.textContent = `${w.icon} ${w.temp}° ${w.label}`;
+    el.title = `风速 ${w.windspeed} km/h`;
+  } catch(e) {}
+}
+
+// ── 夜间免打扰 ────────────────────────────────────────────────────────
+function updateQuiet() {
+  const qEnabled = localStorage.getItem('hg_quiet_enabled') !== 'false';
+  const qStart   = localStorage.getItem('hg_quiet_start') || '21:00';
+  const qEnd     = localStorage.getItem('hg_quiet_end')   || '07:00';
+  const badge    = document.getElementById('w-quiet');
+  if (qEnabled && isQuiet(qStart, qEnd)) {
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function isQuiet(start, end) {
+  const now = new Date(), cur = now.getHours() * 60 + now.getMinutes();
+  const [sh,sm] = start.split(':').map(Number), [eh,em] = end.split(':').map(Number);
+  const s = sh*60+sm, e = eh*60+em;
+  return s > e ? (cur >= s || cur < e) : (cur >= s && cur < e);
+}
+
+// ── 主循环 ────────────────────────────────────────────────────────────
+refreshStats();
+setInterval(refreshStats, 30000);
+
+setInterval(() => {
+  tickPomo();
+  updatePosture();
+  updateWeather();
+  updateQuiet();
+}, 1000);
+</script>
+</body>
+</html>
+

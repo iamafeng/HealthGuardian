@@ -23,7 +23,8 @@ body {
     margin: 0;
     padding: 25px;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     min-height: 100vh;
     overflow-x: hidden;
 }
@@ -1243,4 +1244,54 @@ body[data-theme="light"] .footer-donate-btn:hover {
     color: #d97706;
 }
 
+/* ─── 🌦️ P5 环境感知天气栏 ──────────────────────────────────────────────── */
+.weather-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    transition: border-color 0.3s;
+}
+
+.weather-bar:hover {
+    border-color: rgba(0, 242, 254, 0.3);
+}
+
+.weather-status {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.weather-tip {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    text-align: right;
+    line-height: 1.4;
+}
+
+/* 各主题天气栏适配 */
+body[data-theme="light"] .weather-bar {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+body[data-theme="forest"] .weather-bar {
+    background: rgba(16, 185, 129, 0.06);
+    border-color: rgba(16, 185, 129, 0.15);
+}
+body[data-theme="ocean"] .weather-bar {
+    background: rgba(167, 139, 250, 0.06);
+    border-color: rgba(167, 139, 250, 0.15);
+}
+
+/* ─── 📐 布局修正：右侧排行榜对齐顶部 ──────────────────────────────────── */
+.card-right {
+    align-self: start;
+}
 

@@ -129,6 +129,7 @@ const CV = {
         document.getElementById('cv-start').disabled = false;
         document.getElementById('cv-stop').disabled = true;
         this.baseline = null;
+        localStorage.setItem('hg_posture_bad', '0'); // 重置灵动岛坐姿状态
         // 重置疲劳追踪
         this.gazeStartTime = null;
         this.eyeFatigueAlertSent = false;
@@ -263,12 +264,16 @@ const CV = {
                     }
                     this.badPostureFrames = 0;
                 }
-                // 同步宠物状态
+                // 同步宠物状态 + 灵动岛 localStorage 桥接
                 if (typeof Pet !== 'undefined') Pet.setBadPosture(true);
+                localStorage.setItem('hg_posture_bad', '1');
             } else {
                 this.badPostureFrames = Math.max(0, this.badPostureFrames - 2);
                 // 恢复正常时清除宠物病态
-                if (this.badPostureFrames === 0 && typeof Pet !== 'undefined') Pet.setBadPosture(false);
+                if (this.badPostureFrames === 0) {
+                    if (typeof Pet !== 'undefined') Pet.setBadPosture(false);
+                    localStorage.setItem('hg_posture_bad', '0');
+                }
             }
         } catch(e) {
             // Ignore frame errors

@@ -3,11 +3,13 @@ const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
+let widgetWindow = null;
 let tray = null;
 let backendUrl = 'http://localhost:8080';
 let usedPort = '8080';
 let pollTimeout = null;
 
+// 加载用户配置
 function loadConfig() {
   try {
     const userConfigPath = path.join(app.getPath('userData'), 'hg-config.json');
@@ -69,14 +71,14 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
     }
   });
 
   checkBackendStatusAndLoad();
 
   mainWindow.on('close', (event) => {
-    if(!app.isQuiting){
+    if (!app.isQuiting) {
       event.preventDefault();
       mainWindow.hide();
     }
@@ -89,69 +91,100 @@ function injectElectronFlag(win) {
   win.webContents.executeJavaScript('window.isElectronApp = true;').catch(() => {});
 }
 
+// ─── 🏝️ 健康灵动岛悬浮窗 ──────────────────────────────────────────────────
+function createWidget() {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.show();
+    widgetWindow.focus();
+    return;
+  }
+  widgetWindow = new BrowserWindow({
+    width: 252,
+    height: 182,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    }
+  });
+  widgetWindow.setAlwaysOnTop(true, 'floating');
+  widgetWindow.loadURL(backendUrl + '/widget.html');
+  // 右下角初始位置
+  const { screen } = require('electron');
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  widgetWindow.setPosition(width - 270, height - 198);
+
+  widgetWindow.on('closed', () => { widgetWindow = null; });
+}
+
+function toggleWidget() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) {
+    createWidget();
+  } else if (widgetWindow.isVisible()) {
+    widgetWindow.hide();
+  } else {
+    widgetWindow.show();
+  }
+}
+
+// IPC：灵动岛关闭 / 最小化 / 呼出主窗口
+ipcMain.on('widget-close',     () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide(); });
+ipcMain.on('widget-minimize',  () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.minimize(); });
+ipcMain.on('widget-open-main', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
+
 // 检查后端是否启动
 function checkBackendStatusAndLoad() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  
+
   const request = net.request(backendUrl);
-  request.on('response', (response) => {
+  request.on('response', () => {
     // 后端已连通
     if (pollTimeout) clearTimeout(pollTimeout);
     mainWindow.loadURL(backendUrl);
-    mainWindow.once('ready-to-show', () => {
-      mainWindow.show();
-    });
+    mainWindow.once('ready-to-show', () => { mainWindow.show(); });
     // 注入 Electron 标识，页面加载完成后触发
-    mainWindow.webContents.on('did-finish-load', () => {
-      injectElectronFlag(mainWindow);
-    });
+    mainWindow.webContents.on('did-finish-load', () => { injectElectronFlag(mainWindow); });
   });
-  
-  request.on('error', (error) => {
+  request.on('error', () => {
     // 后端未连通，加载错误页面
     mainWindow.loadFile(path.join(__dirname, 'error.html'), { query: { url: backendUrl } });
-    mainWindow.once('ready-to-show', () => {
-      mainWindow.show();
-    });
+    mainWindow.once('ready-to-show', () => { mainWindow.show(); });
     // 同时也开始轮询，一旦启动自动刷新
     if (pollTimeout) clearTimeout(pollTimeout);
     pollTimeout = setTimeout(checkBackendStatusAndLoad, 5000);
   });
-  
   request.end();
 }
 
 function createTray() {
-  // 生产环境中如果不想要图标报错，可以捕获或者放一个默认透明或真实存在的 icon
   try {
     const iconPath = path.join(__dirname, '../src/main/resources/static/favicon.ico');
-    if (fs.existsSync(iconPath)) {
-      tray = new Tray(iconPath);
-    } else {
-      // 如果找不到 favicon，就使用 Electron 内置的一个空白 Tray（不推荐但在开发阶段防报错）
-      // 这里暂时不创建原生 tray 以防崩溃，或者也可以用 nativeImage 创建一个简单的图标
-    }
+    if (fs.existsSync(iconPath)) tray = new Tray(iconPath);
 
     if (tray) {
       const contextMenu = Menu.buildFromTemplate([
         { label: '显示控制板', click: () => { mainWindow.show(); mainWindow.focus(); } },
+        { label: '🏝️ 切换健康灵动岛', click: () => toggleWidget() },
         { label: '👤 账号同步（跨端登录）', click: () => {
-              mainWindow.show(); mainWindow.focus();
-              // 触发前端打开身份同步弹窗
-              mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.showAuth();").catch(() => {});
-            }
+            mainWindow.show(); mainWindow.focus();
+            mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.showAuth();").catch(() => {});
+          }
         },
         { label: '修改服务器地址', click: () => {
-             mainWindow.loadFile(path.join(__dirname, 'error.html'), { query: { url: backendUrl } });
-             mainWindow.show();
-             mainWindow.focus();
+            mainWindow.loadFile(path.join(__dirname, 'error.html'), { query: { url: backendUrl } });
+            mainWindow.show(); mainWindow.focus();
           }
         },
         { type: 'separator' },
         { label: '⭐ GitHub 开源地址', click: () => shell.openExternal('https://github.com/iamafeng/HealthGuardian') },
         { label: '☕ 赏作者一杯咖啡', click: () => {
-              mainWindow.show(); mainWindow.focus();
-              mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.show('donate-modal');").catch(() => {});
+            mainWindow.show(); mainWindow.focus();
+            mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.show('donate-modal');").catch(() => {});
           }
         },
         { type: 'separator' },
@@ -159,13 +192,9 @@ function createTray() {
       ]);
       tray.setToolTip('HealthGuardian · 健康守护者');
       tray.setContextMenu(contextMenu);
-      tray.on('double-click', () => {
-        mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-      });
+      tray.on('double-click', () => { mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show(); });
     }
-  } catch(e) {
-    console.log("Tray 初始化异常, 可忽略", e);
-  }
+  } catch(e) { console.log("Tray 初始化异常, 可忽略", e); }
 }
 
 app.whenReady().then(() => {
@@ -173,27 +202,18 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  // 注册全局快捷键 (例如: Shift+Ctrl+H 呼出)
   globalShortcut.register('CommandOrControl+Shift+H', () => {
     if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
+      mainWindow.isVisible() ? mainWindow.hide() : (mainWindow.show(), mainWindow.focus());
     }
   });
+  // Ctrl+Shift+W 切换灵动岛
+  globalShortcut.register('CommandOrControl+Shift+W', () => toggleWidget());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+app.on('will-quit', () => { globalShortcut.unregisterAll(); });
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

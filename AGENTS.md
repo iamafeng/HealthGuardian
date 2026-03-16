@@ -102,6 +102,14 @@ Frontend files require **no separate build** — Spring Boot serves `src/main/re
 
 > After every feature or schema change, update **both** `README.md` and `快速运行.md` simultaneously. Deployment/startup commands are maintained **only** in `快速运行.md`.
 
+## Desktop Sync Rule
+
+> After completing any web page feature, you **must** verify whether the Electron desktop shell needs to be updated. Specifically:
+> - If the feature uses new `localStorage` keys as a bridge (e.g., for the 🏝️ widget), update `widget.html` and `electron/main.js` accordingly.
+> - If the feature adds new tray menu entries, IPC channels, or window behaviors, update `electron/main.js`.
+> - If the feature introduces new global shortcuts, register them in `electron/main.js` via `globalShortcut.register`.
+> - The desktop shell must always reflect the same feature set as the web UI.
+
 ## Linux Deployment
 
 Use scripts in `sh/` (not a Maven plugin):

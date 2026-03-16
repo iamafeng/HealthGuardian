@@ -1,8 +1,12 @@
 {
   "name": "health-guardian-desktop",
-  "version": "1.0.0",
-  "description": "HealthGuardian 桌面端",
-  "author": "iamafeng",
+  "version": "1.1.0",
+  "description": "HealthGuardian · 赛博视觉健康辅助管家",
+  "author": {
+    "name": "iamafeng",
+    "email": "iamafeng@github.com",
+    "url": "https://github.com/iamafeng/HealthGuardian"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/iamafeng/HealthGuardian.git"
@@ -12,7 +16,8 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "release": "electron-builder --publish always"
+    "release": "electron-builder --publish always",
+    "make-icon": "node make-icon.js"
   },
   "devDependencies": {
     "electron": "^28.2.0",
@@ -21,17 +26,49 @@
   "build": {
     "appId": "com.healthguardian.desktop",
     "productName": "HealthGuardian",
+    "copyright": "Copyright © 2024 iamafeng. Open-source under MIT License.",
+    "icon": "../src/main/resources/static/favicon.ico",
     "directories": {
       "output": "dist"
     },
+    "extraMetadata": {
+      "version": "1.1.0"
+    },
     "win": {
-      "target": "nsis",
-      "artifactName": "HealthGuardian-Setup.exe"
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "../src/main/resources/static/favicon.ico",
+      "publisherName": "iamafeng",
+      "legalTrademarks": "HealthGuardian",
+      "requestedExecutionLevel": "asInvoker",
+      "fileAssociations": [],
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "../src/main/resources/static/favicon.ico",
+      "uninstallerIcon": "../src/main/resources/static/favicon.ico",
+      "installerHeaderIcon": "../src/main/resources/static/favicon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HealthGuardian",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "HealthGuardian-${version}-Setup.exe",
+      "license": "LICENSE.txt"
+    },
+    "portable": {
+      "artifactName": "HealthGuardian-${version}-Portable.exe"
     },
     "publish": {
       "provider": "github",
       "owner": "iamafeng",
-      "repo": "HealthGuardian"
+      "repo": "HealthGuardian",
+      "releaseType": "release"
     }
   }
 }

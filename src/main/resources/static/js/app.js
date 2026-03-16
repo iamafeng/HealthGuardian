@@ -87,6 +87,7 @@ const App = {
         reminders: [],
         achievementsData: [],
         pet: { drinkToday: 0, restToday: 0 },
+        meetingEndAt: null,  // 📅 会议结束时间 (Date or null)
         // 🌙 夜间免打扰（从 localStorage 读取默认值，loadData 后从服务器同步）
         quietHours: {
             enabled: localStorage.getItem('hg_quiet_enabled') !== 'false',
@@ -98,6 +99,13 @@ const App = {
     async init() {
         this.applyTheme(this.state.theme);
         this.setupPWA();
+        // 📅 恢复保存的会议提醒
+        const savedMeeting = localStorage.getItem('hg_meeting_end');
+        if (savedMeeting) {
+            const t = new Date(savedMeeting);
+            if (t > new Date()) { this.state.meetingEndAt = t; this._updateMeetingBar(); }
+            else { localStorage.removeItem('hg_meeting_end'); localStorage.removeItem('hg_meeting_title'); }
+        }
         // 检测 Electron 桌面端环境
         this._isElectron = !!(typeof window !== 'undefined' &&
             ((typeof process !== 'undefined' && process.versions && process.versions.electron) ||
@@ -164,7 +172,6 @@ const App = {
                 const intervalMs = r.interval_minutes * 60 * 1000;
                 if (now - r.lastNotified >= intervalMs) {
                     if (this.isInQuietHours()) {
-                        // 夜间免打扰：静默跳过，但重置计时（避免结束时连续轰炸）
                         r.lastNotified = now;
                     } else {
                         this.triggerAlarm(r);
@@ -172,6 +179,9 @@ const App = {
                     }
                 }
             });
+            // 📅 会议结束检查
+            this._checkMeetingEnd();
+            this._updateMeetingBar();
         }, 60000);
     },
 
@@ -578,6 +588,73 @@ h1{font-size:1.5rem;background:linear-gradient(to right,#00f2fe,#4facfe);-webkit
         if (restMin) await API.post('/api/configs/update', { secretKey: this.state.secretKey, type: 'SEDENTARY', minutes: restMin });
         UI.toast('⚡ 智能间隔已应用，系统将按您的规律提醒', 'success');
         this.loadData();
+    },
+
+    // --- 📅 日程结束提醒 ---
+    openMeetingModal() {
+        const timeInput = document.getElementById('meeting-end-time');
+        const titleInput = document.getElementById('meeting-title');
+        if (timeInput && this.state.meetingEndAt) {
+            const h = String(this.state.meetingEndAt.getHours()).padStart(2, '0');
+            const m = String(this.state.meetingEndAt.getMinutes()).padStart(2, '0');
+            timeInput.value = `${h}:${m}`;
+        }
+        if (titleInput && this.state.meetingEndAt) {
+            titleInput.value = localStorage.getItem('hg_meeting_title') || '';
+        }
+        UI.modal.show('meeting-modal');
+    },
+
+    scheduleMeeting(timeStr, title) {
+        if (!timeStr) { UI.toast('请选择会议结束时间', 'warning'); return; }
+        const [h, m] = timeStr.split(':').map(Number);
+        const endAt = new Date();
+        endAt.setHours(h, m, 0, 0);
+        if (endAt <= new Date()) endAt.setDate(endAt.getDate() + 1); // next day if past
+        this.state.meetingEndAt = endAt;
+        localStorage.setItem('hg_meeting_end', endAt.toISOString());
+        localStorage.setItem('hg_meeting_title', title || '会议');
+        this._updateMeetingBar();
+        UI.modal.hide('meeting-modal');
+        UI.toast(`📅 ${title || '会议'}结束提醒已设置，到 ${timeStr} 自动弹出拉伸`, 'success');
+    },
+
+    cancelMeeting() {
+        this.state.meetingEndAt = null;
+        localStorage.removeItem('hg_meeting_end');
+        localStorage.removeItem('hg_meeting_title');
+        this._updateMeetingBar();
+        UI.toast('📅 会议提醒已取消', 'info');
+    },
+
+    _checkMeetingEnd() {
+        if (!this.state.meetingEndAt) return;
+        if (new Date() >= this.state.meetingEndAt) {
+            const title = localStorage.getItem('hg_meeting_title') || '会议';
+            this.state.meetingEndAt = null;
+            localStorage.removeItem('hg_meeting_end');
+            localStorage.removeItem('hg_meeting_title');
+            UI.toast(`📅 「${title}」已结束！起来拉伸一下吧 🧘`, 'warning');
+            setTimeout(() => Workout.start('desk'), 1000);
+            if (this.state.isRegistered) {
+                API.post('/api/notify/webhook', {
+                    secretKey: this.state.secretKey,
+                    message: `[Health]【日程提醒】「${title}」已结束，请立即起身活动，执行调息协议，避免久坐损伤！🧘`
+                });
+            }
+        }
+    },
+
+    _updateMeetingBar() {
+        const bar = document.getElementById('meeting-bar');
+        const leftEl = document.getElementById('meeting-time-left');
+        if (!bar || !leftEl) return;
+        if (!this.state.meetingEndAt) { bar.style.display = 'none'; return; }
+        const diffMs = this.state.meetingEndAt - new Date();
+        if (diffMs <= 0) { bar.style.display = 'none'; return; }
+        const mins = Math.ceil(diffMs / 60000);
+        leftEl.textContent = mins < 60 ? `${mins} 分钟` : `${Math.floor(mins/60)} 小时 ${mins%60} 分`;
+        bar.style.display = 'flex';
     },
 
     // --- 成就分享卡片 ---
@@ -1195,6 +1272,8 @@ const Breathing = {
 // ─── 🎵 AmbientSound 环境音效模块（多层滤波版）──────────────────────────────
 const AmbientSound = {
     _ctx: null, _sources: [], _lfos: [], _gainNode: null, _type: null,
+    // 🧠 心流动态音频
+    _flowMode: false, _alphaSources: null, _alphaGain: null, _focusScore: 1.0, _flowUpdateInterval: null,
 
     _getCtx() {
         if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1285,6 +1364,7 @@ const AmbientSound = {
 
         this._type = type;
         this._updateBtns();
+        if (this._flowMode) { this._stopAlpha(); this._startAlpha(); }
         const labels = { white: '专注白噪音 🌊', rain: '自然雨声 🌧️', cafe: '咖啡馆氛围 ☕' };
         UI.toast(`🎵 ${labels[type]} 已开启`, 'success');
     },
@@ -1293,6 +1373,7 @@ const AmbientSound = {
         [...(this._sources || []), ...(this._lfos || [])].forEach(n => { try { n.stop(); } catch(e){} });
         this._sources = []; this._lfos = [];
         if (this._gainNode) { try { this._gainNode.disconnect(); } catch(e){} this._gainNode = null; }
+        this._stopAlpha();
         this._type = null;
         this._updateBtns();
     },
@@ -1301,6 +1382,110 @@ const AmbientSound = {
         document.querySelectorAll('.ambient-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.sound === this._type);
         });
+        const flowBtn = document.getElementById('flow-toggle-btn');
+        if (flowBtn) flowBtn.classList.toggle('active', this._flowMode);
+    },
+
+    // ── 🧠 心流动态音频 ──────────────────────────────────────────────────────
+    _baseGain() {
+        const gains = { white: 0.15, rain: 0.45, cafe: 0.28 };
+        return gains[this._type] || 0.2;
+    },
+
+    updateFocusState(score) {
+        this._focusScore = Math.max(0, Math.min(1, score));
+    },
+
+    toggleFlow() {
+        if (this._flowMode) this.disableFlow();
+        else this.enableFlow();
+    },
+
+    enableFlow() {
+        if (this._flowMode) return;
+        this._flowMode = true;
+        this._updateBtns();
+        if (this._type) { this._stopAlpha(); this._startAlpha(); }
+        if (this._flowUpdateInterval) clearInterval(this._flowUpdateInterval);
+        this._flowUpdateInterval = setInterval(() => this._applyFlow(), 2000);
+        const ind = document.getElementById('flow-indicator');
+        if (ind) ind.style.display = 'block';
+        UI.toast('🧠 心流动态音频已激活，建议同时开启 CV 坐姿感知', 'success');
+    },
+
+    disableFlow() {
+        if (!this._flowMode) return;
+        this._flowMode = false;
+        this._updateBtns();
+        clearInterval(this._flowUpdateInterval);
+        this._stopAlpha();
+        // Restore base gain smoothly
+        if (this._gainNode) {
+            try {
+                this._gainNode.gain.setTargetAtTime(this._baseGain(), this._getCtx().currentTime, 0.8);
+            } catch(e) {}
+        }
+        const ind = document.getElementById('flow-indicator');
+        if (ind) ind.style.display = 'none';
+        UI.toast('🧠 心流模式已关闭', 'info');
+    },
+
+    _startAlpha() {
+        if (this._alphaGain) return;
+        try {
+            const ctx = this._getCtx();
+            this._alphaGain = ctx.createGain();
+            this._alphaGain.gain.value = 0; // Start silent — applyFlow will ramp it up
+            this._alphaGain.connect(ctx.destination);
+            this._alphaSources = [];
+            // Binaural alpha beat: left 200Hz / right 210Hz → perceive 10Hz alpha rhythm
+            const oscL = ctx.createOscillator();
+            oscL.type = 'sine'; oscL.frequency.value = 200;
+            const panL = ctx.createStereoPanner(); panL.pan.value = -1;
+            const gL = ctx.createGain(); gL.gain.value = 0.5;
+            oscL.connect(gL); gL.connect(panL); panL.connect(this._alphaGain);
+            oscL.start(); this._alphaSources.push(oscL);
+
+            const oscR = ctx.createOscillator();
+            oscR.type = 'sine'; oscR.frequency.value = 210;
+            const panR = ctx.createStereoPanner(); panR.pan.value = 1;
+            const gR = ctx.createGain(); gR.gain.value = 0.5;
+            oscR.connect(gR); gR.connect(panR); panR.connect(this._alphaGain);
+            oscR.start(); this._alphaSources.push(oscR);
+        } catch(e) { console.warn('Alpha init error:', e); }
+    },
+
+    _stopAlpha() {
+        if (this._alphaSources) {
+            this._alphaSources.forEach(n => { try { n.stop(); } catch(e) {} });
+            this._alphaSources = null;
+        }
+        if (this._alphaGain) {
+            try { this._alphaGain.disconnect(); } catch(e) {}
+            this._alphaGain = null;
+        }
+    },
+
+    _applyFlow() {
+        if (!this._flowMode) return;
+        const score = this._focusScore;
+        try {
+            const ctx = this._getCtx();
+            const base = this._baseGain();
+            if (this._gainNode) {
+                const targetGain = score >= 0.7 ? base
+                    : score >= 0.4 ? base * 0.85
+                    : base * 0.5;
+                this._gainNode.gain.setTargetAtTime(targetGain, ctx.currentTime, 1.5);
+            }
+            if (this._alphaGain) {
+                // Alpha intensity: subtle at mid-focus, strongest at deep focus, off when distracted
+                const alphaTarget = score >= 0.7 ? 0.022
+                    : score >= 0.4 ? 0.008
+                    : 0;
+                this._alphaGain.gain.setTargetAtTime(alphaTarget, ctx.currentTime, 2.0);
+            }
+        } catch(e) {}
     }
 };
 // ─── 🐾 Pet 健康小怪兽模块 ────────────────────────────────────────────────────

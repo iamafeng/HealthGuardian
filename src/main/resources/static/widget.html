@@ -79,6 +79,7 @@ html, body { width:240px; background:transparent; overflow:hidden; }
 .badge.dim   { color:#475569; }
 .badge.quiet { color:#6b7280; }
 .badge.weather { color:#93c5fd; flex-shrink: 0; }
+.badge.meeting { color:#fbbf24; background: rgba(251,191,36,0.08); flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -116,6 +117,10 @@ html, body { width:240px; background:transparent; overflow:hidden; }
     <span class="badge green" id="w-posture">✅ 坐姿正常</span>
     <span class="badge weather" id="w-weather">🌡️ —</span>
     <span class="badge quiet" id="w-quiet" style="display:none">🌙 免打扰</span>
+  </div>
+  <!-- 📅 会议倒计时（有会议提醒时显示）-->
+  <div id="w-meeting-row" class="status-row" style="display:none; margin-top:4px">
+    <span class="badge meeting" id="w-meeting">📅 —</span>
   </div>
 </div>
 
@@ -211,6 +216,26 @@ function isQuiet(start, end) {
   return s > e ? (cur >= s || cur < e) : (cur >= s && cur < e);
 }
 
+// ── 📅 日程会议倒计时 ─────────────────────────────────────────────────
+function updateMeeting() {
+  const row = document.getElementById('w-meeting-row');
+  const el  = document.getElementById('w-meeting');
+  if (!row || !el) return;
+  try {
+    const raw = localStorage.getItem('hg_meeting_end');
+    if (!raw) { row.style.display = 'none'; return; }
+    const endAt = new Date(raw);
+    const diffMs = endAt - Date.now();
+    if (diffMs <= 0) { row.style.display = 'none'; return; }
+    const mins = Math.ceil(diffMs / 60000);
+    const title = localStorage.getItem('hg_meeting_title') || '会议';
+    el.textContent = mins < 60
+      ? `📅 ${title} · ${mins} 分后拉伸`
+      : `📅 ${title} · ${Math.floor(mins/60)}h${mins % 60}m 后拉伸`;
+    row.style.display = 'flex';
+  } catch(e) { row.style.display = 'none'; }
+}
+
 // ── 主循环 ────────────────────────────────────────────────────────────
 refreshStats();
 setInterval(refreshStats, 30000);
@@ -220,6 +245,7 @@ setInterval(() => {
   updatePosture();
   updateWeather();
   updateQuiet();
+  updateMeeting();
 }, 1000);
 </script>
 </body>

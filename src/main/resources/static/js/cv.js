@@ -137,6 +137,14 @@ const CV = {
         this.lastEyeScore = 1.0;
         const eyeDisplay = document.getElementById('eye-fatigue-display');
         if (eyeDisplay) eyeDisplay.style.display = 'none';
+        // 重置心流音频指示器至中性状态
+        if (typeof AmbientSound !== 'undefined' && AmbientSound._flowMode) {
+            AmbientSound.updateFocusState(1.0);
+            const bar = document.getElementById('flow-score-bar');
+            if (bar) bar.style.width = '60%';
+            const lvl = document.getElementById('flow-level-text');
+            if (lvl) { lvl.textContent = '等待 CV 感知...'; lvl.style.color = 'var(--primary)'; }
+        }
     },
 
     calibrateBaseline() {
@@ -194,6 +202,25 @@ const CV = {
                     this.blinkEvents = this.blinkEvents.filter(t => now - t < 60000);
                     const blinkRate = this.blinkEvents.length;
 
+                    // ─── 🧠 心流动态音频：专注度得分 ─────────────────────────────
+                    if (typeof AmbientSound !== 'undefined' && AmbientSound._flowMode) {
+                        // 正常眨眼率 4–18 次/分钟；过高或过低均表示疲劳/分散
+                        const blinkOk = blinkRate >= 4 && blinkRate <= 18;
+                        const focusScore = (isBadPosture ? 0.15 : 0.6) + (blinkOk ? 0.4 : 0.0);
+                        AmbientSound.updateFocusState(focusScore);
+                        const bar = document.getElementById('flow-score-bar');
+                        if (bar) bar.style.width = (focusScore * 100) + '%';
+                        const lvl = document.getElementById('flow-level-text');
+                        if (lvl) {
+                            lvl.textContent = focusScore >= 0.7 ? '深度心流 🌊'
+                                : focusScore >= 0.4 ? '轻度专注 💡'
+                                : '注意力分散 ⚠️';
+                            lvl.style.color = focusScore >= 0.7 ? 'var(--success)'
+                                : focusScore >= 0.4 ? 'var(--primary)'
+                                : 'var(--accent)';
+                        }
+                    }
+
                     // 更新 UI（每秒一次，避免抖动）
                     if (now - this.lastGazeUpdateTime > 1000) {
                         this.lastGazeUpdateTime = now;
@@ -222,6 +249,14 @@ const CV = {
                         this.eyeFatigueAlertSent = false;
                         const eyeDisplay = document.getElementById('eye-fatigue-display');
                         if (eyeDisplay) eyeDisplay.style.display = 'none';
+                    }
+                    // 心流：面部不可见时专注度归零
+                    if (typeof AmbientSound !== 'undefined' && AmbientSound._flowMode) {
+                        AmbientSound.updateFocusState(0);
+                        const bar = document.getElementById('flow-score-bar');
+                        if (bar) bar.style.width = '0%';
+                        const lvl = document.getElementById('flow-level-text');
+                        if (lvl) { lvl.textContent = '未检测到面部 👀'; lvl.style.color = 'var(--text-dim)'; }
                     }
                 }
                 

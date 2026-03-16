@@ -34,6 +34,18 @@
                     <button class="ambient-btn" data-sound="rain" onclick="AmbientSound.play('rain')">🌧️ 雨声</button>
                     <button class="ambient-btn" data-sound="cafe" onclick="AmbientSound.play('cafe')">☕ 咖啡馆</button>
                     <button class="ambient-btn" onclick="AmbientSound.stop()">🔇 静音</button>
+                    <button class="ambient-btn" id="flow-toggle-btn" onclick="AmbientSound.toggleFlow()" title="心流模式：CV 实时感知专注度，自动调节音量并混入 10Hz Alpha 脑波">🧠 心流</button>
+                </div>
+                <!-- 🧠 心流动态音频指示器 -->
+                <div id="flow-indicator" style="display:none; margin-top:10px; padding:8px 12px; background:rgba(0,242,254,0.05); border-radius:10px; border:1px solid rgba(0,242,254,0.12)">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
+                        <span style="font-size:0.6rem; color:var(--text-dim); font-weight:700; letter-spacing:0.5px">🧠 心流动态音频</span>
+                        <span id="flow-level-text" style="font-size:0.62rem; font-weight:700; color:var(--primary)">等待 CV 感知...</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.3); border-radius:3px; height:3px; overflow:hidden">
+                        <div id="flow-score-bar" style="height:100%; background:linear-gradient(to right,var(--accent),var(--primary),var(--success)); width:60%; transition:width 1.5s ease; border-radius:3px"></div>
+                    </div>
+                    <div style="font-size:0.58rem; color:var(--text-dim); margin-top:4px; opacity:0.6">Alpha 脑波 (200-210Hz) · 坐姿 + 眨眼率双驱动</div>
                 </div>
             </div>
 
@@ -79,6 +91,14 @@
             <button class="btn-outline" onclick="App.generateWeeklyReport()">
                 <span>📊 健康周报</span>
             </button>
+            <button class="btn-outline" onclick="App.openMeetingModal()">
+                <span>📅 日程提醒</span>
+            </button>
+            <!-- 📅 会议倒计时提示条 -->
+            <div id="meeting-bar" style="display:none; margin-top:8px; padding:8px 12px; background:rgba(251,191,36,0.08); border-radius:10px; border:1px solid rgba(251,191,36,0.25); font-size:0.7rem; color:var(--gold); align-items:center; justify-content:space-between; gap:8px">
+                <span>📅 <span id="meeting-time-left">--</span> 后自动拉伸</span>
+                <span style="cursor:pointer; opacity:0.6" onclick="App.cancelMeeting()" title="取消">✕</span>
+            </div>
 
             <!-- 🐾 健康小怪兽 -->
             <div id="health-pet-widget" style="margin-top:18px; padding:14px; background:rgba(0,0,0,0.2); border-radius:16px; border:1px solid var(--border); text-align:center; cursor:pointer" onclick="UI.modal.show('pet-modal')">
@@ -464,6 +484,26 @@
                 <button id="workout-btn" class="btn-action" style="flex:2; padding:10px"
                     onclick="Workout.next()" disabled>准备中...</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 📅 日程结束提醒 Modal -->
+    <div id="meeting-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width:380px; text-align:left">
+            <h2>📅 日程结束提醒</h2>
+            <p style="color:var(--text-dim); font-size:0.82rem; margin-bottom:20px; line-height:1.6">
+                设置会议/专注块的结束时间，到时自动弹出拉伸引导，让身体不因长时间开会而僵硬。
+            </p>
+            <label style="font-size:0.8rem; color:var(--text-dim); font-weight:600; display:block; margin-bottom:8px">🕐 会议结束时间</label>
+            <input type="time" id="meeting-end-time" style="width:100%; margin-bottom:12px">
+            <label style="font-size:0.8rem; color:var(--text-dim); font-weight:600; display:block; margin-bottom:8px">📝 日程名称（可选）</label>
+            <input type="text" id="meeting-title" placeholder="如：周会 / 一对一" style="margin-bottom:16px">
+            <button class="btn-action" style="width:100%; margin-bottom:10px"
+                onclick="App.scheduleMeeting(document.getElementById('meeting-end-time').value, document.getElementById('meeting-title').value)">
+                ⏰ 设置提醒
+            </button>
+            <button class="btn-outline" onclick="App.cancelMeeting(); UI.modal.hide('meeting-modal')">取消已有提醒</button>
+            <button class="btn-outline" onclick="UI.modal.hide('meeting-modal')">关闭</button>
         </div>
     </div>
 

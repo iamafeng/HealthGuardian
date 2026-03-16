@@ -8,8 +8,8 @@ Three-layer hybrid stack running as a single deployable unit:
 - **Desktop shell**: Electron (`electron/`) wraps the web UI, auto-discovers backend port from `application.properties`
 
 All REST endpoints live in one file: `src/main/java/com/healthguardian/ReminderController.java`.  
-All frontend logic lives in `src/main/resources/static/js/app.js` — a single file containing named modules: `App` (state/lifecycle), `UI` (rendering), `API` (fetch wrapper), `Workout` (multi-step exercise sequences), `Breathing` (4-7-8 timer), `AmbientSound` (Web Audio noise generator), `Pet` (health pet sidebar), `Weather` (Open-Meteo environment awareness). Posture detection is in `cv.js` (TF.js MoveNet).  
-`widget.html` is a second static page served at `/widget.html` — loaded by the Electron floating widget (`Ctrl+Shift+W`); it reads `localStorage` keys written by the main window and `cv.js` to display live data without any backend calls.
+All frontend logic lives in `src/main/resources/static/js/app.js` — a single file containing two top-level config objects (`Themes`, `TextStyles`) followed by named modules: `App` (state/lifecycle), `UI` (rendering), `API` (fetch wrapper), `Workout` (multi-step exercise sequences), `Breathing` (4-7-8 timer), `AmbientSound` (Web Audio noise generator), `Pet` (health pet sidebar), `Weather` (Open-Meteo environment awareness). Posture detection is in `cv.js` (TF.js MoveNet).  
+`widget.html` is a second static page served at `/widget.html` — loaded by the Electron floating widget (`Ctrl+Shift+W`); it reads `localStorage` keys for pomo state, posture, weather, quiet hours, and meeting data, **and also polls `/api/stats` + `/api/streak` directly every 30 s** via `refreshStats()`.
 
 ## Build & Run
 
@@ -36,6 +36,8 @@ Frontend files require **no separate build** — Spring Boot serves `src/main/re
 - **`t_partner` is auto-created** via `@PostConstruct` in `ReminderController` on every startup.
 - **Idempotent inserts**: always use `INSERT IGNORE` for achievements, partner links, and seed data.
 - **`t_user` quiet-hours columns**: `quiet_enabled` (TINYINT), `quiet_start` (VARCHAR `'21:00'`), `quiet_end` (VARCHAR `'07:00'`) — updated by `POST /api/user/webhook` alongside webhook settings. Not created by `@PostConstruct`; must be added via schema migration if absent.
+- **`t_achievement.is_hidden`**: TINYINT(1) column added idempotently via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` inside `@PostConstruct`. Hidden achievements (codes: `MIDNIGHT_GHOST`, `HYDRO_CHAMPION`, `DAWN_WARRIOR`, `PET_LOVER`) are set to `is_hidden=1` on every startup.
+- **Password hashing**: `hashPassword()` in `ReminderController` uses SHA-256 (hex string). Stored in `t_user.password_hash`. Guests have no password; old accounts may have empty `password_hash` and receive a password on first auth.
 - **Schema evolution rule**: add both a full-schema block and an incremental-upgrade SQL block to `快速运行.md` for every table change.
 
 ### Key Tables
@@ -85,6 +87,14 @@ Frontend files require **no separate build** — Spring Boot serves `src/main/re
 **Meeting-end stretch trigger** (`App.scheduleMeeting(timeStr, title)`): user sets an HH:MM meeting end time; the Date is persisted in `hg_meeting_end` / `hg_meeting_title` localStorage and stored in `App.state.meetingEndAt`. Every 60 s, `startGlobalBackgroundTimer()` calls `_checkMeetingEnd()` — when `now >= endAt`, fires `Workout.start('desk')` + webhook `[Health]【日程提醒】`. Past end times on page load are discarded without triggering. Countdown shown in `#meeting-bar` (sidebar), updated every 60 s and immediately on schedule/cancel.
 
 **Electron ↔ backend URL**: port config resolution order is: (1) `%APPDATA%/hg-config.json` (user override), (2) `electron/config.json`, (3) `application.properties` regex `server.port`. User can also override via tray menu → saves to `%APPDATA%/hg-config.json`. Global shortcut `Ctrl+Shift+H` toggles the main window; `Ctrl+Shift+W` toggles `widgetWindow` (the 🏝️ floating 灵动岛, 252×182, frameless, always-on-top, positioned bottom-right). `window.isElectronApp = true` is injected via `injectElectronFlag()` after `did-finish-load`. Hardware acceleration is disabled (`app.disableHardwareAcceleration()`) for broader compatibility.
+
+**Electron backend polling**: `checkBackendStatusAndLoad()` probes the backend URL on startup; if unreachable, loads `electron/error.html` (with `?url=<backendUrl>`) and retries every 5 s until the backend responds. The `update-backend-url` IPC message (from `error.html`) updates `backendUrl` at runtime and triggers a re-probe.
+
+**Electron IPC channels** (widget → main): `widget-close` hides the widget window; `widget-minimize` minimizes it; `widget-open-main` shows and focuses the main window. Tray entries call `UI.modal.showAuth()` (account sync) and `UI.modal.show('donate-modal')` (coffee) via `executeJavaScript`.
+
+**CV posture detection** (`cv.js`): uses MoveNet SINGLEPOSE_LIGHTNING at 320×240. After a 3 s warmup, `calibrateBaseline()` records the inter-eye pixel distance (`eyeDist`) as `this.baseline`. On each frame, if `eyeDist > this.baseline * 1.4` → bad posture (user is leaning too close to camera). After 45 consecutive bad-posture frames (~1-2 s), `triggerWarning()` fires at most once per 15 s: flashes red vignette, launches `Workout.start('eye')`, and sends a webhook alert. Eye-fatigue trigger: 20 minutes of continuous face detection → `triggerEyeFatigueAlert()` → `Workout.start('eye')` + webhook. Both triggers call `API.post('/api/notify/webhook', …)` only for registered users (`App.state.isRegistered`).
+
+**`Themes` and `TextStyles`** top-level objects in `app.js`: `Themes` maps theme names (`cyber`/`forest`/`ocean`/`light`) to CSS variable sets applied by `App.applyTheme(name)`. `TextStyles` maps style names (`mecha`/`gentle`/`silly`/`strict`) to reminder text templates (drinkTitle, drinkBody fn, restTitle, restBody fn) consumed in `App.triggerAlarm()`. Both are plain `const` objects defined before any module.
 
 **MySQL 8 window functions** are used in `/api/adaptive-schedule` (LAG over partitioned reminder logs) — do not downgrade MySQL below 8.0.
 

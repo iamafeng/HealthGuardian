@@ -2,12 +2,29 @@ const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell } = 
 const path = require('path');
 const fs = require('fs');
 
+// ─── 单例锁：防止多开，避免多进程导致重复提醒通知 ──────────────────────────
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  // 已有实例在运行，直接退出新实例
+  app.quit();
+}
+
+// 当第二个实例尝试启动时，聚焦已有主窗口而非新建窗口
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 let mainWindow;
 let widgetWindow = null;
 let tray = null;
 let backendUrl = 'http://localhost:8080';
 let usedPort = '8080';
 let pollTimeout = null;
+let _trayBalloonShown = false; // 仅在第一次最小化到托盘时气泡提示
 
 // 加载用户配置
 function loadConfig() {
@@ -81,6 +98,17 @@ function createWindow() {
     if (!app.isQuiting) {
       event.preventDefault();
       mainWindow.hide();
+      // 第一次隐藏到托盘时，用气泡提示用户（避免反复弹出）
+      if (!_trayBalloonShown && tray) {
+        _trayBalloonShown = true;
+        try {
+          tray.displayBalloon({
+            iconType: 'info',
+            title: 'HealthGuardian 仍在运行',
+            content: '程序已最小化到系统托盘，双击托盘图标可重新打开。\n如需彻底退出，请右键托盘图标 → 彻底退出。',
+          });
+        } catch (_) { /* 非 Windows 平台忽略 */ }
+      }
     }
   });
 }

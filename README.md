@@ -25,7 +25,8 @@
 
 | 平台 | 下载链接 | 说明 |
 |---|---|---|
-| 🪟 Windows | [**HealthGuardian-Setup.exe**](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe) | NSIS 安装包，双击即装 |
+| 🪟 Windows 安装版 | [**HealthGuardian-Setup.exe**](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe) | NSIS 安装包，含目录选择 + 桌面快捷方式，**推荐** |
+| 📦 Windows 绿色版 | [**HealthGuardian-Portable.exe**](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Portable.exe) | 免安装单文件，U 盘可用 |
 | 📦 历史版本 | [GitHub Releases](https://github.com/iamafeng/HealthGuardian/releases) | 所有历史版本归档 |
 
 > **无需自己打包**，直接下载安装程序。桌面版支持系统托盘、全局快捷键 `Ctrl+Shift+H`、健康灵动岛 `Ctrl+Shift+W` 等原生功能。

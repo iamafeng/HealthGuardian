@@ -58,11 +58,11 @@
       "createStartMenuShortcut": true,
       "shortcutName": "HealthGuardian",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "HealthGuardian-${version}-Setup.exe",
+      "artifactName": "HealthGuardian-Setup.exe",
       "license": "LICENSE.txt"
     },
     "portable": {
-      "artifactName": "HealthGuardian-${version}-Portable.exe"
+      "artifactName": "HealthGuardian-Portable.exe"
     },
     "publish": {
       "provider": "github",

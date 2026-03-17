@@ -146,7 +146,10 @@ const App = {
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
         }
-        if (Notification.permission === 'default') Notification.requestPermission();
+        // 桌面端：权限由 Electron session 自动授予，无需弹框；浏览器端才需要主动请求
+        if (!window.isElectronApp && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
     },
 
     // --- 🌙 夜间免打扰判断 ---
@@ -196,8 +199,17 @@ const App = {
 
         // 1. 桌面通知
         const desktopEnabled = localStorage.getItem('desktop_notify_enabled') !== 'false';
-        if (desktopEnabled && Notification.permission === 'granted') {
-            new Notification(title, { body, icon: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png' });
+        if (desktopEnabled) {
+            if (window.isElectronApp) {
+                // Electron 桌面端：通过 IPC 调用主进程原生通知，无需任何权限弹窗
+                try {
+                    const { ipcRenderer } = window.require('electron');
+                    ipcRenderer.send('show-notification', { title, body });
+                } catch (_) { /* 降级到 Web API */ }
+            } else if (Notification.permission === 'granted') {
+                // 普通浏览器端
+                new Notification(title, { body, icon: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png' });
+            }
         }
         // 2. Webhook 推送（仅注册用户）
         if (this.state.isRegistered) {
@@ -393,6 +405,15 @@ const App = {
     },
 
     async requestBrowserNotify() {
+        // 桌面端：原生通知无需授权，直接测试
+        if (window.isElectronApp) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('show-notification', { title: 'HealthGuardian', body: '✅ 系统通知测试成功！提醒功能已正常工作。' });
+                UI.toast('✅ 系统通知测试已发送，请查看右下角弹窗', 'success');
+            } catch (_) { UI.toast('通知发送失败，请重启应用', 'error'); }
+            UI.updateNotifyPermBtn(); return;
+        }
         if (!('Notification' in window)) { UI.toast('当前环境不支持浏览器通知', 'warning'); return; }
         if (Notification.permission === 'denied') {
             UI.toast('通知权限已被拒绝，请在浏览器地址栏的锁图标处手动开启', 'warning');
@@ -785,7 +806,14 @@ const UI = {
     updateNotifyPermBtn() {
         const btn = document.getElementById('notify-perm-btn');
         const status = document.getElementById('notify-perm-status');
-        if (!btn || !('Notification' in window)) return;
+        if (!btn) return;
+        // 桌面端使用原生通知，无需浏览器权限
+        if (window.isElectronApp) {
+            btn.innerText = '✅ 桌面端系统通知已开启（原生）'; btn.disabled = true;
+            if (status) status.innerText = '提醒弹窗由操作系统直接推送，无需额外授权。';
+            return;
+        }
+        if (!('Notification' in window)) return;
         const perm = Notification.permission;
         if (perm === 'granted') {
             btn.innerText = '✅ 浏览器通知权限已开启'; btn.disabled = true;
@@ -1269,11 +1297,19 @@ const Breathing = {
     }
 };
 
-// ─── 🎵 AmbientSound 环境音效模块（多层滤波版）──────────────────────────────
+// ─── 🎵 AmbientSound 环境音效模块（真实音频版）──────────────────────────────
 const AmbientSound = {
-    _ctx: null, _sources: [], _lfos: [], _gainNode: null, _type: null,
+    _ctx: null, _gainNode: null, _type: null,
+    _audioEl: null, _mediaSource: null,
     // 🧠 心流动态音频
     _flowMode: false, _alphaSources: null, _alphaGain: null, _focusScore: 1.0, _flowUpdateInterval: null,
+
+    // 音频文件映射
+    _files: {
+        white: '/audio/liecio-calming-rain-257596.mp3',
+        rain:  '/audio/eryliaa-rain-and-birds-singing-in-the-forest-422415.mp3',
+        cafe:  '/audio/freesound_community-birds-in-the-morning-24147.mp3',
+    },
 
     _getCtx() {
         if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1281,97 +1317,44 @@ const AmbientSound = {
         return this._ctx;
     },
 
-    // 生成指定类型噪音 Buffer（3 秒无缝循环）
-    _makeBuf(ctx, noiseType) {
-        const len = ctx.sampleRate * 3;
-        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-        const d = buf.getChannelData(0);
-        if (noiseType === 'white') {
-            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-        } else { // pink
-            let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
-            for (let i = 0; i < len; i++) {
-                const w = Math.random() * 2 - 1;
-                b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
-                b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
-                b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
-                d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;
-                b6=w*0.115926;
-            }
-        }
-        return buf;
-    },
-
-    // 创建噪音源 → 滤波器 → 增益节点，返回 src
-    _addLayer(ctx, noiseType, filterType, freq, Q, gainVal, destination) {
-        const src = ctx.createBufferSource();
-        src.buffer = this._makeBuf(ctx, noiseType);
-        src.loop = true;
-        const filt = ctx.createBiquadFilter();
-        filt.type = filterType; filt.frequency.value = freq;
-        if (Q != null) filt.Q.value = Q;
-        const g = ctx.createGain(); g.gain.value = gainVal;
-        src.connect(filt); filt.connect(g); g.connect(destination);
-        src.start();
-        this._sources.push(src);
-        return { src, filt, gain: g };
-    },
-
     play(type) {
         this.stop();
         const ctx = this._getCtx();
+
+        // 创建 <audio> 元素，懒加载，点击时才开始加载
+        const audio = new Audio();
+        audio.src = this._files[type];
+        audio.loop = true;
+        audio.crossOrigin = 'anonymous';
+        audio.preload = 'auto';
+        this._audioEl = audio;
+
+        // 接入 Web Audio API，保持心流增益控制链路不变
         this._gainNode = ctx.createGain();
+        this._gainNode.gain.value = 0.85;
         this._gainNode.connect(ctx.destination);
-        this._sources = []; this._lfos = [];
 
-        if (type === 'white') {
-            // ─── 纯净专注白噪音：白噪音 + 轻微高切（6kHz），减少刺耳感 ───
-            this._gainNode.gain.value = 0.15;
-            this._addLayer(ctx, 'white', 'lowpass', 6000, null, 1.0, this._gainNode);
+        // MediaElementSource 只能创建一次，复用同一个 audio 元素
+        const src = ctx.createMediaElementSource(audio);
+        src.connect(this._gainNode);
+        this._mediaSource = src;
 
-        } else if (type === 'rain') {
-            // ─── 自然雨声：三层混合 ─────────────────────────────────────────
-            this._gainNode.gain.value = 0.45;
-            // 层1：细雨嘶嘶声（白噪音 → 带通 ~2kHz）
-            this._addLayer(ctx, 'white', 'bandpass', 2000, 1.5, 0.55, this._gainNode);
-            // 层2：更细密的雨丝（白噪音 → 带通 ~4kHz，音量轻）
-            this._addLayer(ctx, 'white', 'bandpass', 4200, 1.0, 0.25, this._gainNode);
-            // 层3：雨打地面低沉声（粉红噪音 → 低通 ~350Hz）
-            this._addLayer(ctx, 'pink', 'lowpass', 350, null, 0.50, this._gainNode);
-            // LFO：缓慢起伏模拟雨势变化（0.07 Hz）
-            const lfo = ctx.createOscillator();
-            lfo.type = 'sine'; lfo.frequency.value = 0.07;
-            const lfoG = ctx.createGain(); lfoG.gain.value = 0.06;
-            lfo.connect(lfoG); lfoG.connect(this._gainNode.gain);
-            lfo.start(); this._lfos.push(lfo);
-
-        } else if (type === 'cafe') {
-            // ─── 咖啡馆氛围：三层模拟 ──────────────────────────────────────
-            this._gainNode.gain.value = 0.28;
-            // 层1：人群嗡嗡低鸣（粉红噪音 → 带通 ~600Hz，宽带）
-            this._addLayer(ctx, 'pink', 'bandpass', 600, 0.4, 0.65, this._gainNode);
-            // 层2：餐具碰撞 & 背景音轮廓（粉红 → 高通 ~3kHz，音量轻）
-            this._addLayer(ctx, 'pink', 'highpass', 3000, null, 0.12, this._gainNode);
-            // 层3：空调 / 咖啡机低频底鸣（粉红 → 低通 ~110Hz）
-            this._addLayer(ctx, 'pink', 'lowpass', 110, null, 0.38, this._gainNode);
-            // LFO：慢速波动模拟人群起伏（0.12 Hz）
-            const lfo2 = ctx.createOscillator();
-            lfo2.type = 'sine'; lfo2.frequency.value = 0.12;
-            const lfoG2 = ctx.createGain(); lfoG2.gain.value = 0.045;
-            lfo2.connect(lfoG2); lfoG2.connect(this._gainNode.gain);
-            lfo2.start(); this._lfos.push(lfo2);
-        }
+        audio.play().catch(() => UI.toast('音频加载中，请稍候...', 'info'));
 
         this._type = type;
         this._updateBtns();
         if (this._flowMode) { this._stopAlpha(); this._startAlpha(); }
-        const labels = { white: '专注白噪音 🌊', rain: '自然雨声 🌧️', cafe: '咖啡馆氛围 ☕' };
+        const labels = { white: '轻柔雨声 🌧️', rain: '森林雨鸣 🌿', cafe: '清晨鸟鸣 🐦' };
         UI.toast(`🎵 ${labels[type]} 已开启`, 'success');
     },
 
     stop() {
-        [...(this._sources || []), ...(this._lfos || [])].forEach(n => { try { n.stop(); } catch(e){} });
-        this._sources = []; this._lfos = [];
+        if (this._audioEl) {
+            this._audioEl.pause();
+            this._audioEl.src = '';
+            this._audioEl = null;
+            this._mediaSource = null;
+        }
         if (this._gainNode) { try { this._gainNode.disconnect(); } catch(e){} this._gainNode = null; }
         this._stopAlpha();
         this._type = null;
@@ -1388,8 +1371,7 @@ const AmbientSound = {
 
     // ── 🧠 心流动态音频 ──────────────────────────────────────────────────────
     _baseGain() {
-        const gains = { white: 0.15, rain: 0.45, cafe: 0.28 };
-        return gains[this._type] || 0.2;
+        return 0.85; // 真实音频统一基准音量
     },
 
     updateFocusState(score) {

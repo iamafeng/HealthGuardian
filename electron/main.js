@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell, session, Notification: ElectronNotification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -165,6 +165,16 @@ ipcMain.on('widget-close',     () => { if (widgetWindow && !widgetWindow.isDestr
 ipcMain.on('widget-minimize',  () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.minimize(); });
 ipcMain.on('widget-open-main', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
 
+// IPC：原生系统通知（无需 Web 权限弹窗）
+ipcMain.on('show-notification', (event, { title, body }) => {
+  try {
+    const n = new ElectronNotification({ title, body, silent: false });
+    n.show();
+  } catch (e) {
+    console.log('原生通知发送失败:', e);
+  }
+});
+
 // 检查后端是否启动
 function checkBackendStatusAndLoad() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -227,6 +237,16 @@ function createTray() {
 
 app.whenReady().then(() => {
   loadConfig();
+
+  // 自动授予通知权限 — 桌面端无需弹框询问用户
+  const ALLOWED_PERMS = new Set(['notifications', 'media', 'geolocation']);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(ALLOWED_PERMS.has(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    return ALLOWED_PERMS.has(permission);
+  });
+
   createWindow();
   createTray();
 

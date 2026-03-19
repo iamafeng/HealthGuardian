@@ -219,10 +219,12 @@ function checkBackendStatusAndLoad() {
 function createTray() {
   try {
     const { nativeImage } = require('electron');
-    const iconPath = path.join(__dirname, '../src/main/resources/static/favicon.ico');
-    const icon = fs.existsSync(iconPath)
-      ? iconPath
-      : nativeImage.createEmpty(); // fallback：找不到图标时用空图标，确保托盘始终创建
+    // 优先用打包进 asar 的 icon.ico，开发模式下 fallback 到 static/favicon.ico
+    const iconInElectron = path.join(__dirname, 'icon.ico');
+    const iconInStatic   = path.join(__dirname, '../src/main/resources/static/favicon.ico');
+    const icon = fs.existsSync(iconInElectron) ? iconInElectron
+               : fs.existsSync(iconInStatic)   ? iconInStatic
+               : nativeImage.createEmpty();
     tray = new Tray(icon);
     const contextMenu = Menu.buildFromTemplate([
         { label: '显示控制板', click: () => { mainWindow.show(); mainWindow.focus(); } },

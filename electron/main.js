@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell, session, Notification: ElectronNotification } = require('electron');
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell, session, dialog, Notification: ElectronNotification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -97,18 +97,35 @@ function createWindow() {
   mainWindow.on('close', (event) => {
     if (!app.isQuiting) {
       event.preventDefault();
-      mainWindow.hide();
-      // 第一次隐藏到托盘时，用气泡提示用户（避免反复弹出）
-      if (!_trayBalloonShown && tray) {
-        _trayBalloonShown = true;
-        try {
-          tray.displayBalloon({
-            iconType: 'info',
-            title: 'HealthGuardian 仍在运行',
-            content: '程序已最小化到系统托盘，双击托盘图标可重新打开。\n如需彻底退出，请右键托盘图标 → 彻底退出。',
-          });
-        } catch (_) { /* 非 Windows 平台忽略 */ }
-      }
+      // 弹出对话框让用户选择
+      dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['最小化到托盘', '彻底退出'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'HealthGuardian',
+        message: '关闭窗口后如何处理？',
+        detail: '最小化到托盘：程序继续在后台运行，可通过托盘图标重新打开。\n彻底退出：完全关闭程序。',
+      }).then(({ response }) => {
+        if (response === 1) {
+          // 彻底退出
+          app.isQuiting = true;
+          app.quit();
+        } else {
+          // 最小化到托盘
+          mainWindow.hide();
+          if (!_trayBalloonShown && tray) {
+            _trayBalloonShown = true;
+            try {
+              tray.displayBalloon({
+                iconType: 'info',
+                title: 'HealthGuardian 仍在运行',
+                content: '程序已最小化到系统托盘，双击托盘图标可重新打开。\n如需彻底退出，请右键托盘图标 → 彻底退出。',
+              });
+            } catch (_) {}
+          }
+        }
+      });
     }
   });
 }
@@ -201,11 +218,13 @@ function checkBackendStatusAndLoad() {
 
 function createTray() {
   try {
+    const { nativeImage } = require('electron');
     const iconPath = path.join(__dirname, '../src/main/resources/static/favicon.ico');
-    if (fs.existsSync(iconPath)) tray = new Tray(iconPath);
-
-    if (tray) {
-      const contextMenu = Menu.buildFromTemplate([
+    const icon = fs.existsSync(iconPath)
+      ? iconPath
+      : nativeImage.createEmpty(); // fallback：找不到图标时用空图标，确保托盘始终创建
+    tray = new Tray(icon);
+    const contextMenu = Menu.buildFromTemplate([
         { label: '显示控制板', click: () => { mainWindow.show(); mainWindow.focus(); } },
         { label: '🏝️ 切换健康灵动岛', click: () => toggleWidget() },
         { label: '👤 账号同步（跨端登录）', click: () => {
@@ -231,7 +250,6 @@ function createTray() {
       tray.setToolTip('HealthGuardian · 健康守护者');
       tray.setContextMenu(contextMenu);
       tray.on('double-click', () => { mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show(); });
-    }
   } catch(e) { console.log("Tray 初始化异常, 可忽略", e); }
 }
 

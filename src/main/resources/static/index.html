@@ -280,7 +280,10 @@
             <input type="password" id="auth-pwd" placeholder="验证密钥 (密码)">
             <button class="btn-action" style="width:100%; margin-top:10px"
                 onclick="App.handleAuth(document.getElementById('auth-user').value, document.getElementById('auth-pwd').value)">确认同步</button>
-            <button class="btn-outline" onclick="UI.modal.hide('auth-modal')">返回</button>
+            <div style="display:flex; gap:10px; margin-top:15px">
+                <button class="btn-outline" onclick="UI.modal.hide('auth-modal')" style="flex:1">返回</button>
+                <button class="btn-outline" onclick="App.startNewIdentity()" style="flex:1; color:var(--accent); border-color:var(--accent)" title="清除本地身份缓存，建立全新身份">🆕 使用新身份</button>
+            </div>
         </div>
     </div>
 

@@ -466,6 +466,20 @@ const App = {
         await this.loadData();
         this.startGlobalBackgroundTimer();
     },
+
+    // 🆕 清除当前身份，建立全新身份
+    async startNewIdentity() {
+        if (!confirm('⚠️ 确定要使用新身份吗？\n\n这将清除本地身份缓存，所有数据将重新开始（旧账号数据不会丢失，可通过「身份同步」找回）。')) {
+            return;
+        }
+        // 清除本地身份缓存
+        localStorage.removeItem('health_guardian_key');
+        localStorage.removeItem('hg_cached_configs');
+        localStorage.removeItem('hg_cached_username');
+        // 保留 UI 偏好设置（主题、文风等）
+        // 刷新页面重新初始化
+        location.reload();
+    },
     applyTheme(name) {
         const vars = Themes[name] || Themes.cyber;
         const root = document.documentElement;

@@ -1590,7 +1590,11 @@ const Pet = {
     },
     
     // 互动玩法：鼠标点击
-    interact() {
+    interact(e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
         this._clickCount++;
         const floatingSprite = document.getElementById('floating-pet-sprite');
         
@@ -1621,7 +1625,6 @@ const Pet = {
                 "摸摸我，我是有灵性的哦~", "工作再忙也要记得抬头看看远处！"
             ];
             this.say(replies[Math.floor(Math.random() * replies.length)]);
-            UI.modal.show('pet-modal'); // 点击同时也打开详情弹窗
         }
     },
     

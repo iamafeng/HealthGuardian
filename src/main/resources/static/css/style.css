@@ -1367,3 +1367,117 @@ body[data-theme="forest"] .download-btn-exe {
 body[data-theme="ocean"] .download-btn-exe {
     color: #0c0a1a;
 }
+
+/* ─── 🐾 悬浮互动宠物 (Standalone Floating Pet) ──────────────────────── */
+.floating-pet {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    width: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    z-index: 1000;
+    cursor: pointer;
+    animation: petFloat 4s ease-in-out infinite;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.floating-pet-emoji {
+    font-size: 4.5rem;
+    line-height: 1;
+    z-index: 2;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.5));
+}
+
+.floating-pet:hover .floating-pet-emoji {
+    transform: scale(1.15) rotate(-5deg);
+}
+
+.floating-pet:active .floating-pet-emoji {
+    transform: scale(0.9) translateY(10px);
+}
+
+/* 点击互动的跳跃动画 */
+@keyframes petJump {
+    0%, 100% { transform: translateY(0) scale(1.15); }
+    50% { transform: translateY(-30px) scale(1.05); }
+}
+
+.pet-shadow {
+    position: absolute;
+    bottom: -10px;
+    width: 50px;
+    height: 15px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 50%;
+    filter: blur(4px);
+    z-index: 1;
+    animation: shadowScale 4s ease-in-out infinite;
+}
+
+.pet-speech-bubble {
+    position: absolute;
+    bottom: 110%;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid var(--primary);
+    color: var(--text-main);
+    padding: 8px 14px;
+    border-radius: 12px 12px 12px 2px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 3;
+    box-shadow: 0 5px 15px rgba(0, 242, 254, 0.2);
+}
+
+.pet-speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: -1px;
+    border-width: 6px 6px 0 0;
+    border-style: solid;
+    border-color: var(--primary) transparent transparent transparent;
+}
+
+.floating-pet.show-speech .pet-speech-bubble {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.pet-hp-container {
+    width: 60px;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    margin-top: 15px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 2;
+}
+
+.pet-hp-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--accent), var(--success));
+    width: 20%;
+    transition: width 0.8s ease;
+    border-radius: 6px;
+}
+
+@keyframes petFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+}
+
+@keyframes shadowScale {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(0.7); opacity: 0.3; }
+}

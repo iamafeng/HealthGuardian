@@ -1487,6 +1487,8 @@ const AmbientSound = {
 // ─── 🐾 Pet 健康小怪兽模块 ────────────────────────────────────────────────────
 const Pet = {
     _badPostureMode: false,
+    _clickCount: 0,
+    _speechTimeout: null,
 
     // 根据今日打卡数更新宠物状态
     update(drinkToday, restToday) {
@@ -1508,19 +1510,29 @@ const Pet = {
         }
 
         const hpClamped = Math.min(100, hp);
-        const emojiEl = document.getElementById('pet-emoji');
-        const moodEl = document.getElementById('pet-mood');
-        const hpBar = document.getElementById('pet-hp-bar');
+        
+        // 更新悬浮宠物
+        const floatingEmoji = document.getElementById('floating-pet-emoji');
+        const floatingHp = document.getElementById('floating-pet-hp');
+        
+        if (floatingEmoji && this._clickCount <= 10) floatingEmoji.innerText = emoji;
+        if (floatingHp) {
+            floatingHp.style.width = hpClamped + '%';
+            if (hpClamped < 30) {
+                floatingHp.style.background = 'linear-gradient(to right, #b91c1c, #f43f5e)';
+            } else {
+                floatingHp.style.background = 'linear-gradient(to right, var(--accent), var(--success))';
+            }
+        }
+        
+        // 模态弹框同步更新
         const modalEmoji = document.getElementById('pet-modal-emoji');
         const modalHp = document.getElementById('pet-modal-hp');
         const modalHpTxt = document.getElementById('pet-modal-hp-text');
         const modalMsg = document.getElementById('pet-modal-msg');
         const statDrink = document.getElementById('pet-stat-drink');
         const statRest = document.getElementById('pet-stat-rest');
-
-        if (emojiEl) emojiEl.innerText = emoji;
-        if (moodEl) moodEl.innerText = mood;
-        if (hpBar) hpBar.style.width = hpClamped + '%';
+        
         if (modalEmoji) modalEmoji.innerText = emoji;
         if (modalHp) modalHp.style.width = hpClamped + '%';
         if (modalHpTxt) modalHpTxt.innerText = `活力值 ${hpClamped}%`;
@@ -1528,17 +1540,75 @@ const Pet = {
         if (statDrink) statDrink.innerText = drinkToday;
         if (statRest) statRest.innerText = restToday;
 
-        // HP 低时让宠物动画加速提示
-        const widget = document.getElementById('health-pet-widget');
-        if (widget) {
-            widget.style.borderColor = hpClamped < 30 ? 'rgba(244,63,94,0.5)' : 'var(--border)';
-        }
+        this._currentMood = mood;
     },
 
     // CV 坐姿检测回调
     setBadPosture(isBad) {
         this._badPostureMode = isBad;
         this.update(App.state.pet.drinkToday, App.state.pet.restToday);
+        if (isBad) this.say("哎呀，主人的脖子要断啦！快坐直坐直！🤒");
+    },
+    
+    // 互动玩法：鼠标点击
+    interact() {
+        this._clickCount++;
+        const floatingEmoji = document.getElementById('floating-pet-emoji');
+        
+        // 跳跃动画
+        if (floatingEmoji) {
+            floatingEmoji.style.animation = 'none';
+            void floatingEmoji.offsetWidth; // triggers reflow
+            floatingEmoji.style.animation = 'petJump 0.5s ease-out';
+        }
+        
+        if (this._clickCount > 8) {
+            if (floatingEmoji) floatingEmoji.innerText = '😠';
+            this.say("别戳啦！快去专心工作！再戳我要生气了！");
+            setTimeout(() => {
+                this._clickCount = 0;
+                this.update(App.state.pet.drinkToday, App.state.pet.restToday);
+            }, 5000);
+        } else {
+            const replies = [
+                "好舒服呀~ 💖", "主人渴不渴？喝口水吧！💧", 
+                "今天要一起干一件大事哦！🚀", "我是小健子，你的健康守护神！",
+                "摸摸我，我是有灵性的哦~", "工作再忙也要记得抬头看看远处！"
+            ];
+            this.say(replies[Math.floor(Math.random() * replies.length)]);
+            UI.modal.show('pet-modal'); // 点击同时也打开详情弹窗
+        }
+    },
+    
+    // 互动玩法：鼠标悬停
+    hover() {
+        if (this._clickCount > 8) return;
+        const floatingEmoji = document.getElementById('floating-pet-emoji');
+        const hp = App.state.pet.drinkToday + App.state.pet.restToday;
+        if (floatingEmoji && hp > 2 && !this._badPostureMode) {
+            floatingEmoji.innerText = '🥰'; // 摸摸头开心
+        }
+    },
+    
+    // 鼠标离开还原
+    leaveHover() {
+        if (this._clickCount > 8) return;
+        this.update(App.state.pet.drinkToday, App.state.pet.restToday);
+    },
+    
+    // 宠物说话气泡
+    say(text) {
+        const petDiv = document.getElementById('floating-pet');
+        const bubble = document.getElementById('pet-speech-bubble');
+        if (!petDiv || !bubble) return;
+        
+        bubble.innerText = text;
+        petDiv.classList.add('show-speech');
+        
+        if (this._speechTimeout) clearTimeout(this._speechTimeout);
+        this._speechTimeout = setTimeout(() => {
+            petDiv.classList.remove('show-speech');
+        }, 4000);
     }
 };
 

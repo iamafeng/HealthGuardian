@@ -266,15 +266,6 @@
                 <span style="cursor:pointer; opacity:0.6" onclick="App.cancelMeeting()" title="取消">✕</span>
             </div>
 
-            <!-- 🐾 健康小怪兽 -->
-            <div id="health-pet-widget" style="margin-top:18px; padding:14px; background:rgba(0,0,0,0.2); border-radius:16px; border:1px solid var(--border); text-align:center; cursor:pointer" onclick="UI.modal.show('pet-modal')">
-                <div id="pet-emoji" style="font-size:2.2rem; line-height:1; margin-bottom:6px">🥚</div>
-                <div id="pet-name" style="font-size:0.7rem; font-weight:700; color:var(--primary); margin-bottom:6px">小健子</div>
-                <div style="background:rgba(0,0,0,0.3); border-radius:6px; height:6px; overflow:hidden; margin-bottom:6px">
-                    <div id="pet-hp-bar" style="height:100%; background:linear-gradient(to right,var(--secondary),var(--primary)); width:20%; transition:width 0.8s ease; border-radius:6px"></div>
-                </div>
-                <div id="pet-mood" style="font-size:0.65rem; color:var(--text-dim); line-height:1.4">点我了解状态...</div>
-            </div>
 
             <div id="user-display" style="margin-top:14px; text-align:center; font-size:0.75rem; color:var(--text-dim)">
                 加载中...
@@ -355,6 +346,16 @@
             <div class="ach-grid" id="achievements-container"></div>
         </div>
     </div><!-- /.layout -->
+
+    <!-- 🐾 悬浮互动小怪兽 -->
+    <div id="floating-pet" class="floating-pet" onclick="Pet.interact()" onmouseover="Pet.hover()" onmouseleave="Pet.leaveHover()">
+        <div id="pet-speech-bubble" class="pet-speech-bubble" style="opacity: 0;">主人，开始今天的专注吧！</div>
+        <div class="pet-shadow"></div>
+        <div id="floating-pet-emoji" class="floating-pet-emoji">🥚</div>
+        <div class="pet-hp-container">
+            <div id="floating-pet-hp" class="pet-hp-fill"></div>
+        </div>
+    </div>
 
     <!-- 🌐 页脚 -->
     <footer class="site-footer">

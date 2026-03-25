@@ -351,7 +351,7 @@
     <div id="floating-pet" class="floating-pet" onclick="Pet.interact()" onmouseover="Pet.hover()" onmouseleave="Pet.leaveHover()">
         <div id="pet-speech-bubble" class="pet-speech-bubble" style="opacity: 0;">主人，开始今天的专注吧！</div>
         <div class="pet-shadow"></div>
-        <div id="floating-pet-emoji" class="floating-pet-emoji">🥚</div>
+        <img id="floating-pet-img" class="floating-pet-img" src="/pet/img/cat_OrangeTabby.png" alt="小健子">
         <div class="pet-hp-container">
             <div id="floating-pet-hp" class="pet-hp-fill"></div>
         </div>
@@ -592,7 +592,7 @@
     <!-- 🐾 健康小怪兽详情 -->
     <div id="pet-modal" class="modal-overlay">
         <div class="modal-card" style="text-align:center; max-width:380px">
-            <div id="pet-modal-emoji" style="font-size:5rem; margin-bottom:10px; animation: petBounce 1s ease-in-out infinite">🥚</div>
+            <img id="pet-modal-img" src="/pet/img/cat_OrangeTabby.png" style="width:100px; height:auto; display:block; margin: 0 auto 20px; filter:drop-shadow(0 10px 10px rgba(0,0,0,0.5)); animation: petBounce 1s ease-in-out infinite" alt="小健子">
             <h2 style="justify-content:center">🐾 小健子的状态</h2>
             <div style="background:rgba(0,0,0,0.2); border-radius:10px; height:10px; overflow:hidden; margin:10px 0 6px">
                 <div id="pet-modal-hp" style="height:100%; background:linear-gradient(to right,var(--secondary),var(--primary)); width:20%; transition:width 0.8s ease; border-radius:10px"></div>

@@ -318,7 +318,11 @@ const App = {
         UI.toast('记录已同步至云端', 'success');
 
         // 更新宠物状态
-        if (type === 'DRINK') { this.state.pet.drinkToday++; if (fromPet) API.post('/api/pet/feed', { secretKey: this.state.secretKey }); }
+        if (type === 'DRINK') { 
+            this.state.pet.drinkToday++; 
+            if (fromPet) API.post('/api/pet/feed', { secretKey: this.state.secretKey }); 
+            try { new Audio('/pet/audio/eat.wav').play(); } catch(e){}
+        }
         if (type === 'SEDENTARY') this.state.pet.restToday++;
         Pet.update(this.state.pet.drinkToday, this.state.pet.restToday);
 
@@ -1512,10 +1516,8 @@ const Pet = {
         const hpClamped = Math.min(100, hp);
         
         // 更新悬浮宠物
-        const floatingEmoji = document.getElementById('floating-pet-emoji');
         const floatingHp = document.getElementById('floating-pet-hp');
         
-        if (floatingEmoji && this._clickCount <= 10) floatingEmoji.innerText = emoji;
         if (floatingHp) {
             floatingHp.style.width = hpClamped + '%';
             if (hpClamped < 30) {
@@ -1526,14 +1528,12 @@ const Pet = {
         }
         
         // 模态弹框同步更新
-        const modalEmoji = document.getElementById('pet-modal-emoji');
         const modalHp = document.getElementById('pet-modal-hp');
         const modalHpTxt = document.getElementById('pet-modal-hp-text');
         const modalMsg = document.getElementById('pet-modal-msg');
         const statDrink = document.getElementById('pet-stat-drink');
         const statRest = document.getElementById('pet-stat-rest');
         
-        if (modalEmoji) modalEmoji.innerText = emoji;
         if (modalHp) modalHp.style.width = hpClamped + '%';
         if (modalHpTxt) modalHpTxt.innerText = `活力值 ${hpClamped}%`;
         if (modalMsg) modalMsg.innerText = mood;
@@ -1553,20 +1553,24 @@ const Pet = {
     // 互动玩法：鼠标点击
     interact() {
         this._clickCount++;
-        const floatingEmoji = document.getElementById('floating-pet-emoji');
+        const floatingImg = document.getElementById('floating-pet-img');
         
+        // 播放喵叫声
+        try { new Audio('/pet/audio/meow.wav').play(); } catch(e){}
+
         // 跳跃动画
-        if (floatingEmoji) {
-            floatingEmoji.style.animation = 'none';
-            void floatingEmoji.offsetWidth; // triggers reflow
-            floatingEmoji.style.animation = 'petJump 0.5s ease-out';
+        if (floatingImg) {
+            floatingImg.style.animation = 'none';
+            void floatingImg.offsetWidth; // triggers reflow
+            floatingImg.style.animation = 'petJump 0.5s ease-out';
         }
         
         if (this._clickCount > 8) {
-            if (floatingEmoji) floatingEmoji.innerText = '😠';
+            if (floatingImg) floatingImg.style.filter = 'drop-shadow(0 10px 15px rgba(255, 0, 0, 0.5)) hue-rotate(320deg)';
             this.say("别戳啦！快去专心工作！再戳我要生气了！");
             setTimeout(() => {
                 this._clickCount = 0;
+                if (floatingImg) floatingImg.style.filter = '';
                 this.update(App.state.pet.drinkToday, App.state.pet.restToday);
             }, 5000);
         } else {
@@ -1583,10 +1587,10 @@ const Pet = {
     // 互动玩法：鼠标悬停
     hover() {
         if (this._clickCount > 8) return;
-        const floatingEmoji = document.getElementById('floating-pet-emoji');
+        const floatingImg = document.getElementById('floating-pet-img');
         const hp = App.state.pet.drinkToday + App.state.pet.restToday;
-        if (floatingEmoji && hp > 2 && !this._badPostureMode) {
-            floatingEmoji.innerText = '🥰'; // 摸摸头开心
+        if (floatingImg && hp > 2 && !this._badPostureMode) {
+            floatingImg.style.transform = 'scale(1.15) rotate(-5deg)'; // 摸摸头开心
         }
     },
     

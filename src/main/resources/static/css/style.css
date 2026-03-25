@@ -391,6 +391,16 @@ input:focus {
     transform: translateX(-50%) translateY(-5px);
 }
 
+.floating-pet:active .floating-pet-img {
+    transform: scale(0.9) translateY(10px);
+}
+
+/* 点击互动的跳跃动画 */
+@keyframes petJump {
+    0%, 100% { transform: translateY(0) scale(1.15); }
+    50% { transform: translateY(-30px) scale(1.05); }
+}
+
 /* --- V3.0 终极系统视觉 --- */
 .header-v3 {
     display: flex;
@@ -1380,31 +1390,6 @@ body[data-theme="ocean"] .download-btn-exe {
     justify-content: flex-end;
     z-index: 1000;
     cursor: pointer;
-    animation: petFloat 4s ease-in-out infinite;
-    user-select: none;
-    -webkit-user-select: none;
-}
-
-.floating-pet-emoji {
-    font-size: 4.5rem;
-    line-height: 1;
-    z-index: 2;
-    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.5));
-}
-
-.floating-pet:hover .floating-pet-emoji {
-    transform: scale(1.15) rotate(-5deg);
-}
-
-.floating-pet:active .floating-pet-emoji {
-    transform: scale(0.9) translateY(10px);
-}
-
-/* 点击互动的跳跃动画 */
-@keyframes petJump {
-    0%, 100% { transform: translateY(0) scale(1.15); }
-    50% { transform: translateY(-30px) scale(1.05); }
 }
 
 .pet-shadow {

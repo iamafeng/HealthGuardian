@@ -25,6 +25,18 @@ public class ReminderController {
     private JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private static final Map<String, Integer> CAT_PRICES = new HashMap<String, Integer>() {{
+        put("cat_OrangeTabby",          0);
+        put("cat_Bengal",             100);
+        put("cat_Calico",             100);
+        put("cat_Tuxedo",             150);
+        put("cat_BlackCat",           150);
+        put("cat_BritishShorthair-Blue", 200);
+        put("cat_Ragdoll",            250);
+        put("cat_MaineCoon",          300);
+        put("cat_Sphynx",             500);
+    }};
+
     @PostConstruct
     public void initTables() {
         jdbcTemplate.execute(
@@ -70,6 +82,24 @@ public class ReminderController {
                 jdbcTemplate.update("UPDATE t_achievement SET is_hidden=1 WHERE code=?", code);
             } catch (Exception ignored) {}
         }
+
+        // 新增 coins 字段（小鱼干币）
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE t_user ADD COLUMN IF NOT EXISTS coins INT DEFAULT 0 COMMENT '小鱼干币'");
+        } catch (Exception ignored) {}
+
+        // 新增 selected_cat 字段（当前选中的猫咪品种）
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE t_user ADD COLUMN IF NOT EXISTS selected_cat VARCHAR(50) DEFAULT 'cat_OrangeTabby' COMMENT '当前猫咪'");
+        } catch (Exception ignored) {}
+
+        // 新增 unlocked_cats 字段（已解锁猫咪，逗号分隔）
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE t_user ADD COLUMN IF NOT EXISTS unlocked_cats TEXT DEFAULT 'cat_OrangeTabby' COMMENT '已解锁猫咪'");
+        } catch (Exception ignored) {}
     }
 
     private String hashPassword(String password) {
@@ -99,7 +129,7 @@ public class ReminderController {
                     .queryForList("SELECT * FROM t_reminder_config WHERE secret_key = ? AND is_enabled = 1", secretKey);
             
             List<Map<String, Object>> userInfos = jdbcTemplate.queryForList(
-                    "SELECT username, webhook_url, is_webhook_enabled FROM t_user WHERE secret_key = ?", secretKey);
+                    "SELECT username, webhook_url, is_webhook_enabled, coins, selected_cat, unlocked_cats FROM t_user WHERE secret_key = ?", secretKey);
 
             if (!configs.isEmpty() || !userInfos.isEmpty()) {
                 // 如果配置不存在但用户存在，可能是从其他端同步过来的新账号，需要初始化默认配置
@@ -123,6 +153,11 @@ public class ReminderController {
                 }
                 // 告知前端：当前 key 是否已绑定真实账号（用于访客提醒逻辑）
                 response.put("isRegistered", !userInfos.isEmpty() && !((String)userInfos.get(0).get("username")).startsWith("访客_"));
+                if (!userInfos.isEmpty()) {
+                    response.put("coins", userInfos.get(0).getOrDefault("coins", 0));
+                    response.put("selectedCat", userInfos.get(0).getOrDefault("selected_cat", "cat_OrangeTabby"));
+                    response.put("unlockedCats", userInfos.get(0).getOrDefault("unlocked_cats", "cat_OrangeTabby"));
+                }
                 jdbcTemplate.update("UPDATE t_user SET last_active_at = NOW() WHERE secret_key = ?", secretKey);
                 return response;
             }
@@ -472,6 +507,11 @@ public class ReminderController {
             award(secretKey, "FOCUS_MASTER");
         if (c != null && c >= 10)
             award(secretKey, "PRODUCTIVITY_BEAST");
+        // 发放小鱼干币（仅注册用户，忽略访客）
+        try {
+            jdbcTemplate.update(
+                "UPDATE t_user SET coins = coins + 10 WHERE secret_key=?", secretKey);
+        } catch (Exception ignored) {}
         return "OK";
     }
 
@@ -700,6 +740,98 @@ public class ReminderController {
         result.put("restAvgGap", restGap.isEmpty() ? null : restGap.get(0).get("avg_gap"));
         result.put("activeHours", activeHours);
         result.put("completedToday", completedToday);
+        return result;
+    }
+
+    // ─── 🐟 宠物经济系统 ────────────────────────────────────────────────────────
+    @GetMapping("/pet/coins")
+    public Map<String, Object> getPetCoins(@RequestParam String secretKey) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT coins, selected_cat, unlocked_cats FROM t_user WHERE secret_key=?", secretKey);
+        if (rows.isEmpty()) {
+            result.put("coins", 0);
+            result.put("selectedCat", "cat_OrangeTabby");
+            result.put("unlockedCats", "cat_OrangeTabby");
+        } else {
+            result.put("coins", rows.get(0).get("coins"));
+            result.put("selectedCat", rows.get(0).get("selected_cat"));
+            result.put("unlockedCats", rows.get(0).get("unlocked_cats"));
+        }
+        return result;
+    }
+
+    @PostMapping("/pet/earn-coins")
+    public Map<String, Object> earnCoins(@RequestParam String secretKey,
+                                          @RequestParam(defaultValue = "10") Integer amount) {
+        Map<String, Object> result = new HashMap<>();
+        int updated = jdbcTemplate.update(
+            "UPDATE t_user SET coins = coins + ? WHERE secret_key=?", amount, secretKey);
+        if (updated == 0) {
+            result.put("success", false); result.put("msg", "用户不存在（访客不支持）");
+            return result;
+        }
+        Integer newCoins = jdbcTemplate.queryForObject(
+            "SELECT coins FROM t_user WHERE secret_key=?", Integer.class, secretKey);
+        result.put("success", true);
+        result.put("coins", newCoins);
+        return result;
+    }
+
+    @PostMapping("/pet/buy-cat")
+    @Transactional
+    public Map<String, Object> buyCat(@RequestParam String secretKey,
+                                       @RequestParam String catId) {
+        Map<String, Object> result = new HashMap<>();
+        Integer price = CAT_PRICES.get(catId);
+        if (price == null) {
+            result.put("success", false); result.put("msg", "未知猫咪品种");
+            return result;
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT coins, unlocked_cats FROM t_user WHERE secret_key=?", secretKey);
+        if (rows.isEmpty()) {
+            result.put("success", false); result.put("msg", "访客不支持购买");
+            return result;
+        }
+        int coins = ((Number) rows.get(0).get("coins")).intValue();
+        String unlocked = (String) rows.get(0).get("unlocked_cats");
+        if (unlocked != null && unlocked.contains(catId)) {
+            result.put("success", false); result.put("msg", "已拥有该猫咪");
+            return result;
+        }
+        if (coins < price) {
+            result.put("success", false); result.put("msg", "小鱼干币不足");
+            result.put("need", price); result.put("have", coins);
+            return result;
+        }
+        String newUnlocked = (unlocked == null || unlocked.isEmpty()) ? catId : unlocked + "," + catId;
+        jdbcTemplate.update(
+            "UPDATE t_user SET coins = coins - ?, unlocked_cats = ? WHERE secret_key=?",
+            price, newUnlocked, secretKey);
+        result.put("success", true);
+        result.put("coins", coins - price);
+        result.put("unlockedCats", newUnlocked);
+        return result;
+    }
+
+    @PostMapping("/pet/select-cat")
+    public Map<String, Object> selectCat(@RequestParam String secretKey,
+                                          @RequestParam String catId) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT unlocked_cats FROM t_user WHERE secret_key=?", secretKey);
+        if (rows.isEmpty()) {
+            result.put("success", false); result.put("msg", "访客不支持");
+            return result;
+        }
+        String unlocked = (String) rows.get(0).get("unlocked_cats");
+        if (unlocked == null || !unlocked.contains(catId)) {
+            result.put("success", false); result.put("msg", "尚未解锁该猫咪");
+            return result;
+        }
+        jdbcTemplate.update("UPDATE t_user SET selected_cat=? WHERE secret_key=?", catId, secretKey);
+        result.put("success", true);
         return result;
     }
 }

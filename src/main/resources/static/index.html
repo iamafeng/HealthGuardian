@@ -172,13 +172,13 @@
     </script>
     
     <!-- 🧠 TensorFlow.js & MoveNet CV 引擎依赖 -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.21.0/dist/tf-converter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+    <script src="/js/tf-core.min.js"></script>
+    <script src="/js/tf-converter.min.js"></script>
+    <script src="/js/tf-backend-webgl.min.js"></script>
+    <script src="/js/pose-detection.min.js"></script>
     
     <!-- 📊 Chart.js 图表库 -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/js/chart.js"></script>
 </head>
 
 <body>
@@ -351,7 +351,7 @@
     <div id="floating-pet" class="floating-pet" onmouseover="Pet.hover()" onmouseleave="Pet.leaveHover()">
         <div id="pet-speech-bubble" class="pet-speech-bubble" style="opacity: 0;">主人，开始今天的专注吧！</div>
         <div class="pet-shadow"></div>
-        <div id="floating-pet-sprite" class="floating-pet-sprite" onclick="Pet.interact(event)" title="👆左键互动抚摸 | 👇右键查看详情" oncontextmenu="event.preventDefault(); UI.modal.show('pet-modal')"></div>
+        <div id="floating-pet-sprite" class="floating-pet-sprite" onmousedown="Pet.handleClick(event)" oncontextmenu="event.preventDefault()" title="👆左键互动抚摸 | 👇右键查看详情"></div>
         <div class="pet-hp-container" onclick="UI.modal.show('pet-modal'); event.stopPropagation()" title="查看详情面板">
             <div id="floating-pet-hp" class="pet-hp-fill"></div>
         </div>
@@ -591,28 +591,74 @@
 
     <!-- 🐾 健康小怪兽详情 -->
     <div id="pet-modal" class="modal-overlay">
-        <div class="modal-card" style="text-align:center; max-width:380px">
-            <div id="pet-modal-sprite" class="floating-pet-sprite" style="margin: 0 auto 20px; width:128px; height:128px;"></div>
+        <div class="modal-card" style="text-align:center; max-width:400px">
+            <div id="pet-modal-sprite" class="floating-pet-sprite" style="margin:0 auto 16px;width:128px;height:128px;"></div>
             <h2 style="justify-content:center">🐾 小健子的状态</h2>
-            <div style="background:rgba(0,0,0,0.2); border-radius:10px; height:10px; overflow:hidden; margin:10px 0 6px">
-                <div id="pet-modal-hp" style="height:100%; background:linear-gradient(to right,var(--secondary),var(--primary)); width:20%; transition:width 0.8s ease; border-radius:10px"></div>
+            <div style="background:rgba(0,0,0,0.2);border-radius:10px;height:10px;overflow:hidden;margin:10px 0 4px">
+                <div id="pet-modal-hp" style="height:100%;background:linear-gradient(to right,var(--secondary),var(--primary));width:20%;transition:width 0.8s ease;border-radius:10px"></div>
             </div>
-            <div id="pet-modal-hp-text" style="font-size:0.7rem; color:var(--text-dim); margin-bottom:16px">活力值 20%</div>
-            <div id="pet-modal-msg" style="background:rgba(0,242,254,0.06); border-left:3px solid var(--primary); border-radius:4px 12px 12px 4px; padding:12px 16px; font-size:0.85rem; color:var(--primary); text-align:left; line-height:1.6; margin-bottom:20px">
+            <div id="pet-modal-hp-text" style="font-size:0.7rem;color:var(--text-dim);margin-bottom:12px">活力值 20%</div>
+            <div style="display:grid;gap:6px;margin-bottom:14px;text-align:left">
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:3px">
+                        <span>🍖 饥饿度</span><span id="pet-hunger-txt">有点饿 😐</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2);border-radius:4px;height:6px;overflow:hidden">
+                        <div id="pet-hunger-bar" style="height:100%;width:50%;background:linear-gradient(to right,#f59e0b,#fbbf24);border-radius:4px;transition:width 0.8s"></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:3px">
+                        <span>⚡ 精力值</span><span id="pet-energy-txt">有点累 😴</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2);border-radius:4px;height:6px;overflow:hidden">
+                        <div id="pet-energy-bar" style="height:100%;width:50%;background:linear-gradient(to right,#10b981,#34d399);border-radius:4px;transition:width 0.8s"></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:3px">
+                        <span>🛁 清洁度</span><span id="pet-clean-txt">干净整洁 ✨</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2);border-radius:4px;height:6px;overflow:hidden">
+                        <div id="pet-clean-bar" style="height:100%;width:80%;background:linear-gradient(to right,#6366f1,#a78bfa);border-radius:4px;transition:width 0.8s"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="pet-modal-msg" style="background:rgba(0,242,254,0.06);border-left:3px solid var(--primary);border-radius:4px 12px 12px 4px;padding:10px 14px;font-size:0.82rem;color:var(--primary);text-align:left;line-height:1.6;margin-bottom:14px">
                 主人，快来打卡给我喂食吧！
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; font-size:0.75rem">
-                <div style="background:rgba(0,0,0,0.15); border-radius:10px; padding:10px">
-                    <div id="pet-stat-drink" style="font-size:1.4rem; font-weight:800; color:var(--primary); font-family:var(--font-mono)">0</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;font-size:0.72rem">
+                <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:8px">
+                    <div id="pet-stat-drink" style="font-size:1.3rem;font-weight:800;color:var(--primary);font-family:var(--font-mono)">0</div>
                     <div style="color:var(--text-dim)">今日补给 💧</div>
                 </div>
-                <div style="background:rgba(0,0,0,0.15); border-radius:10px; padding:10px">
-                    <div id="pet-stat-rest" style="font-size:1.4rem; font-weight:800; color:var(--secondary); font-family:var(--font-mono)">0</div>
+                <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:8px">
+                    <div id="pet-stat-rest" style="font-size:1.3rem;font-weight:800;color:var(--secondary);font-family:var(--font-mono)">0</div>
                     <div style="color:var(--text-dim)">今日调息 🧘</div>
                 </div>
+                <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:8px">
+                    <div class="pet-coins-display" style="font-size:1.1rem;font-weight:800;color:var(--gold);font-family:var(--font-mono)">🐟 0</div>
+                    <div style="color:var(--text-dim)">小鱼干币</div>
+                </div>
             </div>
-            <button class="btn-action" style="width:100%; margin-bottom:10px" onclick="App.completeTask('DRINK', this, true); UI.modal.hide('pet-modal')">💧 喂水 (+1 补给)</button>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+                <button class="btn-action" style="flex:1" onclick="App.completeTask('DRINK', this, true); UI.modal.hide('pet-modal')">💧 喂水 (+1)</button>
+                <button class="btn-action" style="flex:1;background:var(--gold);color:#0f172a" onclick="Pet.openShop()">🛒 猫咪商店</button>
+            </div>
             <button class="btn-outline" onclick="UI.modal.hide('pet-modal')">返回</button>
+        </div>
+    </div>
+
+    <!-- 🛒 猫咪商店 -->
+    <div id="pet-shop-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width:480px">
+            <h2>🛒 猫咪领养商店</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <span style="font-size:0.8rem;color:var(--text-dim)">完成番茄钟获得小鱼干币，解锁更多猫咪品种</span>
+                <span class="pet-coins-display" style="font-size:0.9rem;font-weight:700;color:var(--gold)">🐟 0</span>
+            </div>
+            <div id="pet-shop-list" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px"></div>
+            <button class="btn-outline" onclick="UI.modal.hide('pet-shop-modal')">关闭</button>
         </div>
     </div>
 

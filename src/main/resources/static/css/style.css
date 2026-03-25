@@ -1478,3 +1478,24 @@ body[data-theme="ocean"] .download-btn-exe {
     0%, 100% { transform: scale(1); opacity: 0.6; }
     50% { transform: scale(0.7); opacity: 0.3; }
 }
+
+/* ─── 🛒 猫咪商店 ──────────────────────────────────────────────────────── */
+.shop-cat-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+.shop-cat-card:hover {
+    border-color: var(--primary);
+    background: rgba(0,242,254,0.06);
+    transform: translateY(-2px);
+}
+.shop-cat-card.selected {
+    border-color: var(--success);
+    background: rgba(16,185,129,0.08);
+    box-shadow: 0 0 12px rgba(16,185,129,0.2);
+}

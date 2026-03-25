@@ -144,8 +144,8 @@ function createWidget() {
     return;
   }
   widgetWindow = new BrowserWindow({
-    width: 252,
-    height: 182,
+    width: 140,
+    height: 160,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -162,7 +162,7 @@ function createWidget() {
   // 右下角初始位置
   const { screen } = require('electron');
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  widgetWindow.setPosition(width - 270, height - 198);
+  widgetWindow.setPosition(width - 160, height - 180);
 
   widgetWindow.on('closed', () => { widgetWindow = null; });
 }
@@ -181,6 +181,13 @@ function toggleWidget() {
 ipcMain.on('widget-close',     () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide(); });
 ipcMain.on('widget-minimize',  () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.minimize(); });
 ipcMain.on('widget-open-main', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
+
+// IPC：宠物精灵悬浮窗动态调整尺寸（悬停展开/收起）
+ipcMain.on('widget-resize', (event, { width, height }) => {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.setSize(width, height);
+  }
+});
 
 // IPC：原生系统通知（无需 Web 权限弹窗）
 ipcMain.on('show-notification', (event, { title, body }) => {
@@ -228,7 +235,7 @@ function createTray() {
     tray = new Tray(icon);
     const contextMenu = Menu.buildFromTemplate([
         { label: '显示控制板', click: () => { mainWindow.show(); mainWindow.focus(); } },
-        { label: '🏝️ 切换健康灵动岛', click: () => toggleWidget() },
+        { label: '🐾 切换宠物精灵', click: () => toggleWidget() },
         { label: '👤 账号同步（跨端登录）', click: () => {
             mainWindow.show(); mainWindow.focus();
             mainWindow.webContents.executeJavaScript("UI && UI.modal && UI.modal.showAuth();").catch(() => {});

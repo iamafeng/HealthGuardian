@@ -86,7 +86,7 @@ const App = {
         },
         reminders: [],
         achievementsData: [],
-        pet: { drinkToday: 0, restToday: 0 },
+        pet: { drinkToday: 0, restToday: 0, coins: 0, selectedCat: 'cat_OrangeTabby', unlockedCats: ['cat_OrangeTabby'], clean: 100 },
         meetingEndAt: null,  // 📅 会议结束时间 (Date or null)
         // 🌙 夜间免打扰（从 localStorage 读取默认值，loadData 后从服务器同步）
         quietHours: {
@@ -186,6 +186,8 @@ const App = {
             // 📅 会议结束检查
             this._checkMeetingEnd();
             this._updateMeetingBar();
+            // 🐾 宠物状态实时刷新（每分钟同步饥饿/精力衰减）
+            Pet.updateVitals(this.state.pet.drinkToday, this.state.pet.restToday);
         }, 60000);
     },
 
@@ -254,6 +256,13 @@ const App = {
                 this.state.reminders = res.configs.map(c => ({
                     ...c, lastNotified: new Date().getTime()
                 }));
+                if (res.coins !== undefined) {
+                    this.state.pet.coins = Number(res.coins) || 0;
+                    this.state.pet.selectedCat = res.selectedCat || 'cat_OrangeTabby';
+                    this.state.pet.unlockedCats = (res.unlockedCats || 'cat_OrangeTabby').split(',');
+                    Pet.applySelectedCat(this.state.pet.selectedCat);
+                    Pet.updateCoinsDisplay();
+                }
                 UI.renderUser(res);
                 UI.renderReminders(res.configs);
                 this.refreshDashboard();
@@ -389,6 +398,13 @@ const App = {
                 secretKey: this.state.secretKey,
                 message: `【专注激励】${nickname} 完美完成了一个番茄钟（25分钟）的深度工作。🧠`
             });
+        }
+        // 发放小鱼干币
+        if (this.state.isRegistered) {
+            this.state.pet.coins += 10;
+            Pet.updateCoinsDisplay();
+            Pet.say('🐟 获得 10 枚小鱼干币！');
+            try { new Audio('/pet/audio/coin.wav').play(); } catch(e) {}
         }
         this.stopPomo();
         this.refreshDashboard();
@@ -1580,16 +1596,33 @@ const Pet = {
         if (statRest) statRest.innerText = restToday;
 
         this._currentMood = mood;
+        this.updateVitals(drinkToday, restToday);
     },
 
     // CV 坐姿检测回调
     setBadPosture(isBad) {
         this._badPostureMode = isBad;
+        if (isBad) {
+            App.state.pet.clean = Math.max(0, App.state.pet.clean - 10);
+        }
         this.update(App.state.pet.drinkToday, App.state.pet.restToday);
         if (isBad) this.say("哎呀，主人的脖子要断啦！快坐直坐直！🤒");
     },
     
     // 互动玩法：鼠标点击
+    // 统一鼠标按键处理：左键互动，右键打开详情
+    handleClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.button === 2) {
+            // 右键 → 打开宠物详情面板
+            UI.modal.show('pet-modal');
+        } else {
+            // 左键 → 撸猫互动
+            this.interact(e);
+        }
+    },
+
     interact(e) {
         if (e) {
             e.preventDefault();
@@ -1599,15 +1632,14 @@ const Pet = {
         const floatingSprite = document.getElementById('floating-pet-sprite');
         
         // 播放喵叫声
-        try { new Audio('/pet/audio/meow.wav').play(); } catch(e){}
+        try { new Audio('/pet/audio/meow.wav').play(); } catch(_){}
 
         this.setState('play', 2000); // 互动时播放玩耍动画
 
-        // 跳跃动画
+        // 跳跃效果：短暂缩放
         if (floatingSprite) {
-            floatingSprite.style.animation = 'none';
-            void floatingSprite.offsetWidth; // triggers reflow
-            floatingSprite.style.animation = 'petJump 0.5s ease-out';
+            floatingSprite.style.transform = 'scale(1.2) translateY(-8px)';
+            setTimeout(() => { floatingSprite.style.transform = ''; }, 300);
         }
         
         if (this._clickCount > 8) {
@@ -1658,7 +1690,128 @@ const Pet = {
         this._speechTimeout = setTimeout(() => {
             petDiv.classList.remove('show-speech');
         }, 4000);
-    }
+    },
+
+    applySelectedCat(catId) {
+        const url = `/pet/img/${catId}.png`;
+        document.querySelectorAll('.floating-pet-sprite, #pet-modal-sprite').forEach(el => {
+            if (el) el.style.backgroundImage = `url('${url}')`;
+        });
+        localStorage.setItem('hg_selected_cat', catId);
+    },
+
+    updateCoinsDisplay() {
+        const coins = App.state.pet.coins;
+        document.querySelectorAll('.pet-coins-display').forEach(el => {
+            el.textContent = `🐟 ${coins}`;
+        });
+    },
+
+    updateVitals(drinkToday, restToday) {
+        // 饥饿度：基于喝水提醒间隔，距上次提醒/打卡越久越饿
+        const drinkReminder = App.state.reminders.find(r => r.remind_type === 'DRINK');
+        const restReminder  = App.state.reminders.find(r => r.remind_type === 'SEDENTARY');
+        const now = Date.now();
+
+        let hunger = 100;
+        if (drinkReminder && drinkReminder.lastNotified) {
+            const elapsed = now - drinkReminder.lastNotified;
+            const intervalMs = drinkReminder.interval_minutes * 60 * 1000;
+            hunger = Math.max(0, Math.round((1 - elapsed / intervalMs) * 100));
+        }
+
+        let energy = 100;
+        if (restReminder && restReminder.lastNotified) {
+            const elapsed = now - restReminder.lastNotified;
+            const intervalMs = restReminder.interval_minutes * 60 * 1000;
+            energy = Math.max(0, Math.round((1 - elapsed / intervalMs) * 100));
+        }
+
+        // 清洁度：坏坐姿时下降，恢复后缓慢回升
+        const clean = this._badPostureMode
+            ? Math.max(0, App.state.pet.clean - 5)
+            : Math.min(100, App.state.pet.clean + 2);
+        App.state.pet.clean = clean;
+
+        const setBar = (id, val, color) => {
+            const el = document.getElementById(id);
+            if (el) { el.style.width = val + '%'; el.style.background = color; }
+        };
+        setBar('pet-hunger-bar', hunger, 'linear-gradient(to right,#f59e0b,#fbbf24)');
+        setBar('pet-energy-bar', energy, 'linear-gradient(to right,#10b981,#34d399)');
+        setBar('pet-clean-bar',  clean,  clean < 30 ? 'linear-gradient(to right,#b91c1c,#f43f5e)' : 'linear-gradient(to right,#6366f1,#a78bfa)');
+        const setText = (id, val, labels) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val >= 70 ? labels[0] : val >= 40 ? labels[1] : labels[2];
+        };
+        setText('pet-hunger-txt', hunger, ['饱饱的 😋','有点饿 😐','好饿啊 😿']);
+        setText('pet-energy-txt', energy, ['精力充沛 ⚡','有点累 😴','精疲力竭 💤']);
+        setText('pet-clean-txt',  clean,  ['干净整洁 ✨','有点脏 🙁','脏兮兮 🤒']);
+    },
+
+    openShop() {
+        UI.modal.show('pet-shop-modal');
+        this._renderShop();
+    },
+
+    _renderShop() {
+        const cats = [
+            { id: 'cat_OrangeTabby',          name: '橘猫',     price: 0,   emoji: '🟠' },
+            { id: 'cat_Bengal',               name: '孟加拉猫', price: 100, emoji: '🐆' },
+            { id: 'cat_Calico',               name: '三花猫',   price: 100, emoji: '🌸' },
+            { id: 'cat_Tuxedo',               name: '燕尾服猫', price: 150, emoji: '🎩' },
+            { id: 'cat_BlackCat',             name: '黑猫',     price: 150, emoji: '🖤' },
+            { id: 'cat_BritishShorthair-Blue',name: '英短蓝猫', price: 200, emoji: '💙' },
+            { id: 'cat_Ragdoll',              name: '布偶猫',   price: 250, emoji: '🪆' },
+            { id: 'cat_MaineCoon',            name: '缅因猫',   price: 300, emoji: '🦁' },
+            { id: 'cat_Sphynx',               name: '无毛猫',   price: 500, emoji: '👽' },
+        ];
+        const unlocked = App.state.pet.unlockedCats;
+        const selected = App.state.pet.selectedCat;
+        const coins = App.state.pet.coins;
+        const el = document.getElementById('pet-shop-list');
+        if (!el) return;
+        el.innerHTML = cats.map(c => {
+            const owned = unlocked.includes(c.id);
+            const isSelected = c.id === selected;
+            const canAfford = coins >= c.price;
+            return `<div class="shop-cat-card ${isSelected ? 'selected' : ''}" onclick="Pet._shopCardClick('${c.id}', ${c.price}, ${owned})">
+            <div style="background-image:url('/pet/img/${c.id}.png');background-size:400% 400%;background-position:0 0;width:64px;height:64px;image-rendering:pixelated;margin:0 auto 8px"></div>
+            <div style="font-size:0.8rem;font-weight:700">${c.emoji} ${c.name}</div>
+            <div style="font-size:0.7rem;margin-top:4px;color:${owned ? 'var(--success)' : canAfford ? 'var(--gold)' : 'var(--accent)'}">
+                ${isSelected ? '✅ 使用中' : owned ? '✅ 已拥有' : `🐟 ${c.price}`}
+            </div>
+        </div>`;
+        }).join('');
+    },
+
+    async _shopCardClick(catId, price, owned) {
+        if (owned) {
+            const res = await API.post('/api/pet/select-cat', { secretKey: App.state.secretKey, catId });
+            if (res.success) {
+                App.state.pet.selectedCat = catId;
+                this.applySelectedCat(catId);
+                try { new Audio('/pet/audio/unlock.wav').play(); } catch(e) {}
+                UI.toast(`已切换为 ${catId.replace('cat_', '')}`, 'success');
+                this._renderShop();
+            }
+        } else {
+            if (!App.state.isRegistered) { UI.toast('购买需要先绑定账号', 'warning'); return; }
+            const res = await API.post('/api/pet/buy-cat', { secretKey: App.state.secretKey, catId });
+            if (res.success) {
+                App.state.pet.coins = res.coins;
+                App.state.pet.unlockedCats = res.unlockedCats.split(',');
+                App.state.pet.selectedCat = catId;
+                this.applySelectedCat(catId);
+                this.updateCoinsDisplay();
+                try { new Audio('/pet/audio/buy.wav').play(); } catch(e) {}
+                UI.toast('🎉 购买成功！', 'success');
+                this._renderShop();
+            } else {
+                UI.toast(res.msg || '购买失败', 'error');
+            }
+        }
+    },
 };
 
 // ─── 🌦️ Weather 环境感知模块 (P5) ───────────────────────────────────────────

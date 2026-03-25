@@ -391,7 +391,19 @@ input:focus {
     transform: translateX(-50%) translateY(-5px);
 }
 
-.floating-pet:active .floating-pet-img {
+.floating-pet-sprite {
+    width: 128px;
+    height: 128px;
+    background-image: url('/pet/img/cat_OrangeTabby.png');
+    background-size: 400% 400%; /* 4 columns, 4 rows */
+    background-position: 0 0;
+    z-index: 2;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.5));
+    transition: filter 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.floating-pet:active .floating-pet-sprite {
     transform: scale(0.9) translateY(10px);
 }
 

@@ -124,6 +124,7 @@ const App = {
         }
         // P5 环境感知 — 始终初始化（访客和登录用户均可用）
         Weather.init();
+        Pet.startAnimation();
     },
 
     // 更新 Electron 桌面端同步提示
@@ -1494,26 +1495,64 @@ const Pet = {
     _clickCount: 0,
     _speechTimeout: null,
 
+    // 🐾 走路/动画控制
+    _animState: 'idle', // idle, walk, play, sleep
+    _animFrame: 0,
+    _animInterval: null,
+    _stateTimeout: null,
+
+    startAnimation() {
+        if (this._animInterval) clearInterval(this._animInterval);
+        this._animInterval = setInterval(() => {
+            this._animFrame = (this._animFrame + 1) % 4; // 4 帧循环
+            const rowMap = { idle: 0, walk: 1, play: 2, sleep: 3 };
+            const y = rowMap[this._animState] * 33.333;
+            const x = this._animFrame * 33.333;
+            
+            const sprite = document.getElementById('floating-pet-sprite');
+            if (sprite) sprite.style.backgroundPosition = `${x}% ${y}%`;
+            
+            const modalSprite = document.getElementById('pet-modal-sprite');
+            if (modalSprite) modalSprite.style.backgroundPosition = `${x}% ${y}%`;
+        }, 200); // 200ms一帧
+    },
+
+    setState(state, durationMs = 0) {
+        if (this._animState === state && durationMs === 0) return;
+        this._animState = state;
+        this._animFrame = 0;
+        
+        if (durationMs > 0) {
+            if (this._stateTimeout) clearTimeout(this._stateTimeout);
+            this._stateTimeout = setTimeout(() => {
+                this._animState = this._badPostureMode ? 'sleep' : 'idle';
+                this._stateTimeout = null;
+            }, durationMs);
+        }
+    },
+
     // 根据今日打卡数更新宠物状态
     update(drinkToday, restToday) {
         const total = drinkToday + restToday;
-        let emoji, mood, hp;
+        let mood, hp;
 
         if (this._badPostureMode) {
-            emoji = '🤒'; mood = '主人坐姿不对，我不舒服...'; hp = Math.max(10, total * 6);
+            mood = '主人坐姿不对，我不舒服...'; hp = Math.max(10, total * 6);
+            this.setState('sleep');
         } else if (total === 0) {
-            emoji = '🥚'; mood = '还是个蛋，等主人打卡孵化我！'; hp = 5;
+            mood = '还是个蛋，等主人打卡孵化我！'; hp = 5;
         } else if (total < 3) {
-            emoji = '😴'; mood = `主人加油呀，今天才打卡 ${total} 次...`; hp = 20 + total * 8;
+            mood = `主人加油呀，今天才打卡 ${total} 次...`; hp = 20 + total * 8;
         } else if (total < 6) {
-            emoji = '😐'; mood = `不错，今天已打卡 ${total} 次，继续保持！`; hp = 40 + total * 6;
+            mood = `不错，今天已打卡 ${total} 次，继续保持！`; hp = 40 + total * 6;
         } else if (total < 10) {
-            emoji = '😊'; mood = `棒棒的！${total} 次打卡，我很开心！`; hp = 65 + total * 3;
+            mood = `棒棒的！${total} 次打卡，我很开心！`; hp = 65 + total * 3;
         } else {
-            emoji = '🤩'; mood = `哇！${total} 次！主人今天太厉害了！🎉`; hp = 100;
+            mood = `哇！${total} 次！主人今天太厉害了！🎉`; hp = 100;
         }
 
         const hpClamped = Math.min(100, hp);
+        if (!this._badPostureMode && !this._stateTimeout) this.setState('idle');
         
         // 更新悬浮宠物
         const floatingHp = document.getElementById('floating-pet-hp');
@@ -1553,24 +1592,26 @@ const Pet = {
     // 互动玩法：鼠标点击
     interact() {
         this._clickCount++;
-        const floatingImg = document.getElementById('floating-pet-img');
+        const floatingSprite = document.getElementById('floating-pet-sprite');
         
         // 播放喵叫声
         try { new Audio('/pet/audio/meow.wav').play(); } catch(e){}
 
+        this.setState('play', 2000); // 互动时播放玩耍动画
+
         // 跳跃动画
-        if (floatingImg) {
-            floatingImg.style.animation = 'none';
-            void floatingImg.offsetWidth; // triggers reflow
-            floatingImg.style.animation = 'petJump 0.5s ease-out';
+        if (floatingSprite) {
+            floatingSprite.style.animation = 'none';
+            void floatingSprite.offsetWidth; // triggers reflow
+            floatingSprite.style.animation = 'petJump 0.5s ease-out';
         }
         
         if (this._clickCount > 8) {
-            if (floatingImg) floatingImg.style.filter = 'drop-shadow(0 10px 15px rgba(255, 0, 0, 0.5)) hue-rotate(320deg)';
+            if (floatingSprite) floatingSprite.style.filter = 'drop-shadow(0 10px 15px rgba(255, 0, 0, 0.5)) hue-rotate(320deg)';
             this.say("别戳啦！快去专心工作！再戳我要生气了！");
             setTimeout(() => {
                 this._clickCount = 0;
-                if (floatingImg) floatingImg.style.filter = '';
+                if (floatingSprite) floatingSprite.style.filter = 'drop-shadow(0 10px 15px rgba(0, 0, 0, 0.5))';
                 this.update(App.state.pet.drinkToday, App.state.pet.restToday);
             }, 5000);
         } else {
@@ -1587,10 +1628,11 @@ const Pet = {
     // 互动玩法：鼠标悬停
     hover() {
         if (this._clickCount > 8) return;
-        const floatingImg = document.getElementById('floating-pet-img');
+        const floatingSprite = document.getElementById('floating-pet-sprite');
         const hp = App.state.pet.drinkToday + App.state.pet.restToday;
-        if (floatingImg && hp > 2 && !this._badPostureMode) {
-            floatingImg.style.transform = 'scale(1.15) rotate(-5deg)'; // 摸摸头开心
+        if (floatingSprite && hp > 2 && !this._badPostureMode) {
+            floatingSprite.style.transform = 'scale(1.15) rotate(-5deg)'; // 摸摸头开心
+            this.setState('play', 1000); // 悬停短暂玩耍
         }
     },
     

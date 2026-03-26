@@ -1401,8 +1401,9 @@ body[data-theme="ocean"] .download-btn-exe {
     align-items: center;
     justify-content: flex-end;
     z-index: 1000;
-    cursor: pointer;
+    cursor: grab;
 }
+.floating-pet:active { cursor: grabbing; }
 
 .pet-shadow {
     position: absolute;

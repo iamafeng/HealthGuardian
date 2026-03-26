@@ -145,11 +145,11 @@ function createWidget() {
   }
   widgetWindow = new BrowserWindow({
     width: 140,
-    height: 160,
+    height: 140,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    resizable: false,
+    resizable: true,
     skipTaskbar: true,
     hasShadow: false,
     webPreferences: {
@@ -159,10 +159,10 @@ function createWidget() {
   });
   widgetWindow.setAlwaysOnTop(true, 'floating');
   widgetWindow.loadURL(backendUrl + '/widget.html');
-  // 右下角初始位置
+  // 右下角初始位置（留出展开空间）
   const { screen } = require('electron');
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  widgetWindow.setPosition(width - 160, height - 180);
+  widgetWindow.setPosition(width - 260, height - 330);
 
   widgetWindow.on('closed', () => { widgetWindow = null; });
 }
@@ -182,10 +182,24 @@ ipcMain.on('widget-close',     () => { if (widgetWindow && !widgetWindow.isDestr
 ipcMain.on('widget-minimize',  () => { if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.minimize(); });
 ipcMain.on('widget-open-main', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
 
-// IPC：宠物精灵悬浮窗动态调整尺寸（悬停展开/收起）
-ipcMain.on('widget-resize', (event, { width, height }) => {
+// IPC：宠物精灵悬浮窗展开/收起（保持左上角位置不变，向下展开）
+ipcMain.on('widget-expand', (event, { width, height }) => {
   if (widgetWindow && !widgetWindow.isDestroyed()) {
-    widgetWindow.setSize(width, height);
+    const pos = widgetWindow.getPosition();
+    widgetWindow.setBounds({ x: pos[0], y: pos[1], width, height });
+  }
+});
+
+// IPC：宠物精灵窗口拖拽
+let _widgetDragOrigin = null;
+ipcMain.on('widget-drag-start', () => {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    _widgetDragOrigin = widgetWindow.getPosition();
+  }
+});
+ipcMain.on('widget-move', (event, { dx, dy }) => {
+  if (widgetWindow && !widgetWindow.isDestroyed() && _widgetDragOrigin) {
+    widgetWindow.setPosition(_widgetDragOrigin[0] + dx, _widgetDragOrigin[1] + dy);
   }
 });
 

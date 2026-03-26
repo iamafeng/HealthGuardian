@@ -4,16 +4,14 @@
 <meta charset="UTF-8">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
-html, body { width:140px; background:transparent; overflow:hidden; }
+html, body { background:transparent; overflow:visible; }
 
 .pet-wrap {
   position: relative;
-  width: 140px;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding-top: 8px;
-  -webkit-app-region: drag;
 }
 
 .sprite {
@@ -24,9 +22,10 @@ html, body { width:140px; background:transparent; overflow:hidden; }
   image-rendering: pixelated;
   filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
   -webkit-app-region: no-drag;
-  cursor: pointer;
+  cursor: grab;
   transition: filter 0.3s;
 }
+.sprite:active { cursor: grabbing; }
 .sprite.bad { filter: drop-shadow(0 6px 12px rgba(244,63,94,0.6)) hue-rotate(300deg); }
 
 .hp-bar {
@@ -42,27 +41,22 @@ html, body { width:140px; background:transparent; overflow:hidden; }
 }
 
 .bubble {
-  position: absolute;
-  bottom: 115%;
-  left: 50%;
+  position: absolute; bottom: 115%; left: 50%;
   transform: translateX(-50%) translateY(8px);
   background: rgba(10,18,35,0.92);
   border: 1px solid rgba(0,242,254,0.5);
-  color: #f8fafc;
-  padding: 6px 10px;
+  color: #f8fafc; padding: 6px 10px;
   border-radius: 10px 10px 10px 2px;
-  font-size: 0.65rem;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
+  font-size: 0.65rem; white-space: nowrap;
+  opacity: 0; pointer-events: none;
   transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
   font-family: 'Segoe UI','Microsoft YaHei',sans-serif;
   z-index: 10;
 }
-.bubble.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.bubble.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
 .data-panel {
-  width: 200px;
+  width: 220px;
   background: rgba(10,18,35,0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -74,6 +68,11 @@ html, body { width:140px; background:transparent; overflow:hidden; }
   margin-top: 6px;
   display: none;
   -webkit-app-region: no-drag;
+  animation: panelFadeIn 0.2s ease-out;
+}
+@keyframes panelFadeIn {
+  from { opacity:0; transform:translateY(-6px); }
+  to   { opacity:1; transform:translateY(0); }
 }
 .data-panel.bad-posture { border-color: rgba(244,63,94,0.5); }
 
@@ -95,14 +94,15 @@ html, body { width:140px; background:transparent; overflow:hidden; }
 .badge.meeting { color:#fbbf24; background:rgba(251,191,36,0.08); }
 
 .close-btn {
-  position: absolute; top: 4px; right: 6px;
-  background: rgba(255,255,255,0.06); border: none;
-  color: #64748b; cursor: pointer;
-  width: 16px; height: 16px; border-radius: 50%;
-  font-size: 0.55rem; display:flex; align-items:center; justify-content:center;
+  position:absolute; top:4px; right:6px;
+  background:rgba(255,255,255,0.06); border:none;
+  color:#64748b; cursor:pointer;
+  width:16px; height:16px; border-radius:50%;
+  font-size:0.55rem; display:flex; align-items:center; justify-content:center;
   -webkit-app-region: no-drag;
-  transition: 0.2s;
+  transition:0.2s; opacity:0;
 }
+.pet-wrap:hover .close-btn { opacity:1; }
 .close-btn:hover { background:rgba(244,63,94,0.3); color:#f43f5e; }
 </style>
 </head>
@@ -111,7 +111,7 @@ html, body { width:140px; background:transparent; overflow:hidden; }
   <button class="close-btn" onclick="closeWidget()" title="关闭">✕</button>
   <div id="bubble" class="bubble"></div>
   <div id="sprite" class="sprite"
-       onclick="openMain()"
+       onmousedown="handleSpriteMouseDown(event)"
        oncontextmenu="event.preventDefault(); petInteract()"
        onmouseover="showPanel()"
        onmouseleave="hidePanel()">
@@ -156,19 +156,53 @@ const { ipcRenderer } = require('electron');
 function closeWidget() { ipcRenderer.send('widget-close'); }
 function openMain()    { ipcRenderer.send('widget-open-main'); }
 
+// ── 左键拖拽/点击混合（拖拽移动窗口，短点击呼出主窗口）──
+function handleSpriteMouseDown(e) {
+  if (e.button !== 0) return; // 只处理左键
+  e.preventDefault();
+  const startX = e.screenX, startY = e.screenY;
+  let dragged = false;
+
+  const onMove = (ev) => {
+    const dx = ev.screenX - startX, dy = ev.screenY - startY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) dragged = true;
+    if (dragged) {
+      ipcRenderer.send('widget-move', { dx: ev.screenX - startX, dy: ev.screenY - startY, startX, startY });
+    }
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if (!dragged) openMain();
+  };
+  // 记录窗口初始位置
+  ipcRenderer.send('widget-drag-start');
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+// ── 悬停展开/收起（窗口动态调整尺寸，确保面板完整显示）──
 let _panelTimer = null;
+let _collapsed = true;
 function showPanel() {
   clearTimeout(_panelTimer);
-  document.getElementById('data-panel').style.display = 'block';
-  ipcRenderer.send('widget-resize', { width: 220, height: 280 });
+  if (_collapsed) {
+    _collapsed = false;
+    document.getElementById('data-panel').style.display = 'block';
+    // 向下展开：保持窗口左上角位置不变，只增加宽度和高度
+    ipcRenderer.send('widget-expand', { width: 240, height: 320 });
+  }
 }
 function hidePanel() {
   _panelTimer = setTimeout(() => {
+    _collapsed = true;
     document.getElementById('data-panel').style.display = 'none';
-    ipcRenderer.send('widget-resize', { width: 140, height: 160 });
-  }, 400);
+    // 收起：恢复原始尺寸，位置不变
+    ipcRenderer.send('widget-expand', { width: 140, height: 140 });
+  }, 500);
 }
 
+// ── 精灵帧动画 ──
 let _animState = 'idle', _animFrame = 0;
 const _rowMap = { idle:0, walk:1, play:2, sleep:3 };
 setInterval(() => {
@@ -178,6 +212,7 @@ setInterval(() => {
   if (s) s.style.backgroundPosition = `${x}% ${y}%`;
 }, 200);
 
+// ── 右键撸猫 ──
 let _bubbleTimer = null;
 function say(text) {
   const b = document.getElementById('bubble');
@@ -187,17 +222,17 @@ function say(text) {
   _bubbleTimer = setTimeout(() => b.classList.remove('show'), 3500);
 }
 
-let _playTimer = null;
-let _isBad = false;
+let _playTimer = null, _isBad = false;
 function petInteract() {
   _animState = 'play';
-  try { new Audio('/pet/audio/meow.wav').play(); } catch(e) {}
+  try { new Audio('/pet/audio/meow.wav').play(); } catch(_) {}
   const replies = ['好舒服呀~ 💖','主人渴不渴？💧','今天要一起干大事！🚀','摸摸我，有灵性的~'];
   say(replies[Math.floor(Math.random() * replies.length)]);
   clearTimeout(_playTimer);
   _playTimer = setTimeout(() => { _animState = _isBad ? 'sleep' : 'idle'; }, 2000);
 }
 
+// ── 坐姿状态 ──
 function updatePosture() {
   const bad = localStorage.getItem('hg_posture_bad') === '1';
   _isBad = bad;
@@ -221,12 +256,14 @@ function updatePosture() {
     : 'linear-gradient(to right,#f43f5e,#10b981)';
 }
 
+// ── 猫咪品种同步 ──
 function updateCatSprite() {
   const cat = localStorage.getItem('hg_selected_cat') || 'cat_OrangeTabby';
   const s = document.getElementById('sprite');
   if (s) s.style.backgroundImage = `url('/pet/img/${cat}.png')`;
 }
 
+// ── 统计数据（每 30s）──
 let secretKey = null;
 async function refreshStats() {
   secretKey = secretKey || localStorage.getItem('health_guardian_key');
@@ -244,9 +281,10 @@ async function refreshStats() {
     const hp = Math.min(100, 20 + (drink + rest) * 8);
     const fill = document.getElementById('hp-fill');
     if (fill) fill.style.width = hp + '%';
-  } catch(e) {}
+  } catch(_) {}
 }
 
+// ── 番茄钟 ──
 function tickPomo() {
   try {
     const raw = localStorage.getItem('hg_pomo_state');
@@ -261,7 +299,7 @@ function tickPomo() {
     txt.textContent = `${String(Math.floor(rem/60)).padStart(2,'0')}:${String(rem%60).padStart(2,'0')}`;
     el.className = 'stat pomo';
     fill.style.width = Math.max(0, rem/(s.duration||1500))*100+'%';
-  } catch(e) {}
+  } catch(_) {}
 }
 
 function updateWeather() {
@@ -271,14 +309,14 @@ function updateWeather() {
     if (!raw) { el.textContent='🌡️ —'; return; }
     const w = JSON.parse(raw);
     el.textContent = `${w.icon} ${w.temp}°`;
-  } catch(e) {}
+  } catch(_) {}
 }
 
 function updateQuiet() {
   const qEnabled = localStorage.getItem('hg_quiet_enabled') !== 'false';
-  const qStart   = localStorage.getItem('hg_quiet_start') || '21:00';
-  const qEnd     = localStorage.getItem('hg_quiet_end')   || '07:00';
-  const badge    = document.getElementById('w-quiet');
+  const qStart = localStorage.getItem('hg_quiet_start') || '21:00';
+  const qEnd   = localStorage.getItem('hg_quiet_end')   || '07:00';
+  const badge  = document.getElementById('w-quiet');
   const now = new Date(), cur = now.getHours()*60+now.getMinutes();
   const [sh,sm]=qStart.split(':').map(Number),[eh,em]=qEnd.split(':').map(Number);
   const s=sh*60+sm, e=eh*60+em;
@@ -298,9 +336,10 @@ function updateMeeting() {
     const title=localStorage.getItem('hg_meeting_title')||'会议';
     el.textContent = mins<60 ? `📅 ${title}·${mins}分后` : `📅 ${title}·${Math.floor(mins/60)}h${mins%60}m`;
     row.style.display='block';
-  } catch(e) { row.style.display='none'; }
+  } catch(_) { row.style.display='none'; }
 }
 
+// ── 主循环 ──
 refreshStats();
 setInterval(refreshStats, 30000);
 setInterval(() => {

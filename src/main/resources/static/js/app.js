@@ -1610,17 +1610,41 @@ const Pet = {
     },
     
     // 互动玩法：鼠标点击
-    // 统一鼠标按键处理：左键互动，右键打开详情
+    // 统一鼠标按键处理：左键拖拽/互动，右键打开详情
+    _dragState: null,
+
     handleClick(e) {
         e.preventDefault();
         e.stopPropagation();
         if (e.button === 2) {
-            // 右键 → 打开宠物详情面板
             UI.modal.show('pet-modal');
-        } else {
-            // 左键 → 撸猫互动
-            this.interact(e);
+            return;
         }
+        // 左键：记录起始位置，区分拖拽和点击
+        const pet = document.getElementById('floating-pet');
+        if (!pet) return;
+        const startX = e.clientX, startY = e.clientY;
+        const rect = pet.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left, offsetY = e.clientY - rect.top;
+        let dragged = false;
+
+        const onMove = (ev) => {
+            const dx = ev.clientX - startX, dy = ev.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) dragged = true;
+            if (dragged) {
+                pet.style.left = (ev.clientX - offsetX) + 'px';
+                pet.style.top  = (ev.clientY - offsetY) + 'px';
+                pet.style.right = 'auto';
+                pet.style.bottom = 'auto';
+            }
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            if (!dragged) this.interact(e);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
     },
 
     interact(e) {

@@ -2,6 +2,12 @@ const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, net, shell, ses
 const path = require('path');
 const fs = require('fs');
 
+// 开发模式下强制使用正确的应用名，避免数据写入通用 Electron 目录
+app.setName('HealthGuardian');
+if (process.env.NODE_ENV !== 'production') {
+  app.setPath('userData', require('path').join(app.getPath('appData'), 'HealthGuardian'));
+}
+
 // ─── 单例锁：防止多开，避免多进程导致重复提醒通知 ──────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {

@@ -351,7 +351,7 @@
     <div id="floating-pet" class="floating-pet" onmouseover="Pet.hover()" onmouseleave="Pet.leaveHover()">
         <div id="pet-speech-bubble" class="pet-speech-bubble" style="opacity: 0;">主人，开始今天的专注吧！</div>
         <div class="pet-shadow"></div>
-        <div id="floating-pet-sprite" class="floating-pet-sprite" onmousedown="Pet.handleClick(event)" oncontextmenu="event.preventDefault()" title="👆左键互动抚摸 | 👇右键查看详情"></div>
+        <div id="floating-pet-sprite" class="floating-pet-sprite" onmousedown="Pet.handleClick(event)" oncontextmenu="Pet.handleContextMenu(event)" ontouchstart="Pet.handleTouchStart(event)" ontouchmove="Pet.handleTouchMove(event)" ontouchend="Pet.handleTouchEnd(event)" title="👆点击互动 | 👇长按/右键查看详情"></div>
         <div class="pet-hp-container" onclick="UI.modal.show('pet-modal'); event.stopPropagation()" title="查看详情面板">
             <div id="floating-pet-hp" class="pet-hp-fill"></div>
         </div>

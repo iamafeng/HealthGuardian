@@ -1516,21 +1516,69 @@ const Pet = {
     _animFrame: 0,
     _animInterval: null,
     _stateTimeout: null,
+    _autoInterval: null,   // 自动行为调度器
+    _animSpeed: 200,       // 当前帧速（ms），walk慢走时用400
 
     startAnimation() {
         if (this._animInterval) clearInterval(this._animInterval);
+        // 帧动画循环
         this._animInterval = setInterval(() => {
-            this._animFrame = (this._animFrame + 1) % 4; // 4 帧循环
+            this._animFrame = (this._animFrame + 1) % 4;
             const rowMap = { idle: 0, walk: 1, play: 2, sleep: 3 };
             const y = rowMap[this._animState] * 33.333;
             const x = this._animFrame * 33.333;
-            
             const sprite = document.getElementById('floating-pet-sprite');
             if (sprite) sprite.style.backgroundPosition = `${x}% ${y}%`;
-            
             const modalSprite = document.getElementById('pet-modal-sprite');
             if (modalSprite) modalSprite.style.backgroundPosition = `${x}% ${y}%`;
-        }, 200); // 200ms一帧
+        }, 200);
+
+        // 自动行为调度：每隔随机时间切换状态
+        this._scheduleNextBehavior();
+    },
+
+    _scheduleNextBehavior() {
+        if (this._autoInterval) clearTimeout(this._autoInterval);
+        // 随机等待 3~10 秒后触发下一个行为
+        const delay = 3000 + Math.random() * 7000;
+        this._autoInterval = setTimeout(() => this._doRandomBehavior(), delay);
+    },
+
+    _doRandomBehavior() {
+        // 被外部状态控制时（坏坐姿/用户互动）不打断
+        if (this._badPostureMode || this._stateTimeout) {
+            this._scheduleNextBehavior();
+            return;
+        }
+
+        // 行为权重表：[状态, 持续ms, 气泡文字(可选), 音效(可选), 权重]
+        const behaviors = [
+            ['idle',  3000, null,              null,          30],  // 静止发呆
+            ['idle',  5000, null,              null,          15],  // 长时间发呆
+            ['walk',  2000, null,              null,          20],  // 慢走
+            ['walk',  4000, null,              null,          10],  // 长时间走动
+            ['play',  2000, '玩得好开心~ 🎉',  null,          10],  // 玩耍
+            ['sleep', 4000, 'Zzz... 💤',       null,          8],   // 小睡
+            ['play',  1500, '喵~ 🐟 好想吃鱼', '/pet/audio/eat.wav',   4],  // 模拟吃饭
+            ['idle',  2000, '💧 主人记得喝水！', null,          3],  // 提醒喝水
+        ];
+
+        // 加权随机选择
+        const totalWeight = behaviors.reduce((s, b) => s + b[4], 0);
+        let r = Math.random() * totalWeight;
+        let chosen = behaviors[0];
+        for (const b of behaviors) {
+            r -= b[4];
+            if (r <= 0) { chosen = b; break; }
+        }
+
+        const [state, duration, bubble, sound] = chosen;
+        this.setState(state, duration);
+        if (bubble) this.say(bubble);
+        if (sound) try { new Audio(sound).play(); } catch(_) {}
+
+        // 行为结束后调度下一个
+        this._autoInterval = setTimeout(() => this._scheduleNextBehavior(), duration + 200);
     },
 
     setState(state, durationMs = 0) {
@@ -1609,17 +1657,45 @@ const Pet = {
         if (isBad) this.say("哎呀，主人的脖子要断啦！快坐直坐直！🤒");
     },
     
-    // 互动玩法：鼠标点击
     // 统一鼠标按键处理：左键拖拽/互动，右键打开详情
     _dragState: null,
+    _longPressTimer: null,
+    _touchMoved: false,
+
+    // 右键：阻止浏览器默认菜单，打开宠物详情
+    handleContextMenu(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        UI.modal.show('pet-modal');
+    },
+
+    // 触摸开始：启动长按计时器
+    handleTouchStart(e) {
+        this._touchMoved = false;
+        this._longPressTimer = setTimeout(() => {
+            if (!this._touchMoved) UI.modal.show('pet-modal');
+        }, 500);
+    },
+
+    // 触摸移动：取消长按
+    handleTouchMove(e) {
+        this._touchMoved = true;
+        clearTimeout(this._longPressTimer);
+    },
+
+    // 触摸结束：短触发互动
+    handleTouchEnd(e) {
+        clearTimeout(this._longPressTimer);
+        if (!this._touchMoved) {
+            e.preventDefault();
+            this.interact(null);
+        }
+    },
 
     handleClick(e) {
         e.preventDefault();
         e.stopPropagation();
-        if (e.button === 2) {
-            UI.modal.show('pet-modal');
-            return;
-        }
+        if (e.button === 2) return; // 右键由 handleContextMenu 处理
         // 左键：记录起始位置，区分拖拽和点击
         const pet = document.getElementById('floating-pet');
         if (!pet) return;

@@ -8,7 +8,7 @@
 
 <div align="center">
 
-**[📥 下载 Windows 桌面版 (.exe)](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe)**　·　**[📦 所有 Releases](https://github.com/iamafeng/HealthGuardian/releases)**　·　**[🌐 在线体验](http://health.afenghu.com/)**
+**[📥 下载 Windows 桌面版 (.exe)](https://github.com/iamafeng/HealthGuardian/releases/latest/download/HealthGuardian-Setup.exe)**　·　**[📦 所有 Releases](https://github.com/iamafeng/HealthGuardian/releases)**　·　**[🌐 在线体验](https://health.afenghu.com/)**
 
 </div>
 

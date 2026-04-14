@@ -20,33 +20,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 配置 Node.js 20
+      - name: 配置 Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
-          cache-dependency-path: electron/package-lock.json
+          cache-dependency-path: GuardianDesktop/package-lock.json
 
       - name: 安装 Electron 依赖
-        working-directory: electron
+        working-directory: GuardianDesktop
         run: npm ci
 
       - name: 构建 Windows NSIS 安装包
-        working-directory: electron
+        working-directory: GuardianDesktop
         run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 列出构建产物（调试）
-        run: Get-ChildItem electron/dist/ -Recurse -Filter "*.exe" | Select-Object FullName, Length
+        run: Get-ChildItem GuardianDesktop/dist/ -Recurse -Filter "*.exe" | Select-Object FullName, Length
         shell: pwsh
 
       - name: 上传到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: electron/dist/*.exe
+          files: GuardianDesktop/dist/*.exe
           generate_release_notes: true
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

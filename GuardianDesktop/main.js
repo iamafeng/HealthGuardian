@@ -231,6 +231,15 @@ function checkBackendStatusAndLoad() {
     mainWindow.once('ready-to-show', () => { mainWindow.show(); });
     // 注入 Electron 标识，页面加载完成后触发
     mainWindow.webContents.on('did-finish-load', () => { injectElectronFlag(mainWindow); });
+
+  // 外部链接（target="_blank"）用系统浏览器打开，不在 Electron 内置窗口中打开
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (!url.startsWith(backendUrl)) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
   });
   request.on('error', () => {
     // 后端未连通，加载错误页面

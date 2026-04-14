@@ -1221,6 +1221,55 @@ body[data-theme="light"] .quiet-time-input::-webkit-calendar-picker-indicator {
     opacity: 0.5;
 }
 
+/* ─── 🧭 顶部导航栏 ─────────────────────────────────────────────────────── */
+.top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 18, 35, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+}
+
+.top-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 38px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.top-nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+}
+
+.top-nav-link:hover {
+    background: rgba(0, 242, 254, 0.08);
+    color: var(--primary);
+}
+
+body[data-theme="light"] .top-nav {
+    background: rgba(255, 255, 255, 0.9);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme="light"] .top-nav-link:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--primary);
+}
+
 /* ─── 🌐 页脚 ───────────────────────────────────────────────────────────── */
 .site-footer {
     max-width: 1400px;

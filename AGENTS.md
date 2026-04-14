@@ -5,11 +5,11 @@
 Three-layer hybrid stack running as a single deployable unit:
 - **Backend**: Spring Boot 2.7.5 (Java 8) — REST API + static file hosting, port **8081**
 - **Frontend**: Vanilla JS SPA in `src/main/resources/static/` — no build step; changes are live after `mvn package`
-- **Desktop shell**: Electron (`electron/`) wraps the web UI, auto-discovers backend port from `application.properties`
+- **Desktop shell**: GuardianDesktop (`GuardianDesktop/`) wraps the web UI, auto-discovers backend port from `application.properties`
 
 All REST endpoints live in one file: `src/main/java/com/healthguardian/ReminderController.java`.  
 All frontend logic lives in `src/main/resources/static/js/app.js` — a single file containing two top-level config objects (`Themes`, `TextStyles`) followed by named modules: `App` (state/lifecycle), `UI` (rendering), `API` (fetch wrapper), `Workout` (multi-step exercise sequences), `Breathing` (4-7-8 timer), `AmbientSound` (Web Audio noise generator), `Pet` (health pet sidebar), `Weather` (Open-Meteo environment awareness). Posture detection is in `cv.js` (TF.js MoveNet).  
-`widget.html` is a second static page served at `/widget.html` — loaded by the Electron floating widget (`Ctrl+Shift+W`); it reads `localStorage` keys for pomo state, posture, weather, quiet hours, and meeting data, **and also polls `/api/stats` + `/api/streak` directly every 30 s** via `refreshStats()`.
+`widget.html` is a second static page served at `/widget.html` — loaded by the GuardianDesktop floating widget (`Ctrl+Shift+W`); it reads `localStorage` keys for pomo state, posture, weather, quiet hours, and meeting data, **and also polls `/api/stats` + `/api/streak` directly every 30 s** via `refreshStats()`.
 
 ## Build & Run
 
@@ -19,8 +19,8 @@ mvn clean package
 java -jar target/health-guardian-0.0.1-SNAPSHOT.jar
 # → http://localhost:8081
 
-# Electron desktop (separate process)
-cd electron
+# GuardianDesktop desktop (separate process)
+cd GuardianDesktop
 npm install      # first time only
 npm run start    # dev mode
 npm run dist     # package to .exe (Windows NSIS)
@@ -155,17 +155,17 @@ Called on every `/api/complete`. All awards use `INSERT IGNORE` (safe to call re
 
 **Meeting-end stretch trigger** (`App.scheduleMeeting(timeStr, title)`): user sets an HH:MM meeting end time; the Date is persisted in `hg_meeting_end` / `hg_meeting_title` localStorage and stored in `App.state.meetingEndAt`. Every 60 s, `startGlobalBackgroundTimer()` calls `_checkMeetingEnd()` — when `now >= endAt`, fires `Workout.start('desk')` + webhook `[Health]【日程提醒】`. Past end times on page load are discarded without triggering. If the set time has already passed today, it is automatically pushed to the next day. Countdown shown in `#meeting-bar` (sidebar), updated every 60 s and immediately on schedule/cancel.
 
-**Electron ↔ backend URL**: port config resolution order is: (1) `%APPDATA%/hg-config.json` (user override), (2) `electron/config.json`, (3) `application.properties` regex `server.port`. User can also override via tray menu → saves to `%APPDATA%/hg-config.json`. Global shortcut `Ctrl+Shift+H` toggles the main window; `Ctrl+Shift+W` toggles `widgetWindow` (the 🏝️ floating 灵动岛, 252×182, frameless, always-on-top, positioned bottom-right). `window.isElectronApp = true` is injected via `injectElectronFlag()` after `did-finish-load`. Hardware acceleration is disabled (`app.disableHardwareAcceleration()`) for broader compatibility.
+**GuardianDesktop ↔ backend URL**: port config resolution order is: (1) `%APPDATA%/hg-config.json` (user override), (2) `GuardianDesktop/config.json`, (3) `application.properties` regex `server.port`. User can also override via tray menu → saves to `%APPDATA%/hg-config.json`. Global shortcut `Ctrl+Shift+H` toggles the main window; `Ctrl+Shift+W` toggles `widgetWindow` (the 🏝️ floating 灵动岛, 252×182, frameless, always-on-top, positioned bottom-right). `window.isGuardianDesktopApp = true` is injected via `injectGuardianDesktopFlag()` after `did-finish-load`. Hardware acceleration is disabled (`app.disableHardwareAcceleration()`) for broader compatibility.
 
-**Electron permission auto-grant**: `session.defaultSession.setPermissionRequestHandler` auto-approves `notifications`, `media`, and `geolocation` — no browser permission popups in the desktop app.
+**GuardianDesktop permission auto-grant**: `session.defaultSession.setPermissionRequestHandler` auto-approves `notifications`, `media`, and `geolocation` — no browser permission popups in the desktop app.
 
-**Electron native notifications**: `ipcMain.on('show-notification', ...)` receives `{title, body}` from the renderer and fires `new ElectronNotification(...)`. The renderer sends via `ipcRenderer.send('show-notification', ...)` inside `App.triggerAlarm()` when `window.isElectronApp` is true.
+**GuardianDesktop native notifications**: `ipcMain.on('show-notification', ...)` receives `{title, body}` from the renderer and fires `new GuardianDesktopNotification(...)`. The renderer sends via `ipcRenderer.send('show-notification', ...)` inside `App.triggerAlarm()` when `window.isGuardianDesktopApp` is true.
 
 **Single-instance lock** (`app.requestSingleInstanceLock()`): called at the very top of `main.js` before `app.whenReady()`. If the lock is NOT acquired (another instance is already running), `app.quit()` is called immediately. The primary instance listens for `second-instance` to restore/focus its main window. This prevents: (a) multiple background processes accumulating, (b) duplicate reminder notifications, (c) competing LevelDB writes to the shared session store (which would wipe `localStorage` in the new instance and force re-login). On window close, a dialog asks the user to choose between "minimize to tray" or "quit completely" — the first-time tray balloon is shown only once (`_trayBalloonShown` flag).
 
-**Electron backend polling**: `checkBackendStatusAndLoad()` probes the backend URL on startup; if unreachable, loads `electron/error.html` (with `?url=<backendUrl>`) and retries every 5 s until the backend responds. The `update-backend-url` IPC message (from `error.html`) updates `backendUrl` at runtime and triggers a re-probe.
+**GuardianDesktop backend polling**: `checkBackendStatusAndLoad()` probes the backend URL on startup; if unreachable, loads `GuardianDesktop/error.html` (with `?url=<backendUrl>`) and retries every 5 s until the backend responds. The `update-backend-url` IPC message (from `error.html`) updates `backendUrl` at runtime and triggers a re-probe.
 
-**Electron IPC channels**:
+**GuardianDesktop IPC channels**:
 | Channel | Direction | Action |
 |---|---|---|
 | `widget-close` | widget → main | Hide widget window |
@@ -212,13 +212,13 @@ Called on every `/api/complete`. All awards use `INSERT IGNORE` (safe to call re
 }
 ```
 
-**`App.triggerAlarm(reminder)`**: dual-channel alert — (1) native notification via Electron IPC or `new Notification()` in browser (respects `desktop_notify_enabled`); (2) webhook push via `/api/notify/webhook` (registered users only). Uses `TextStyles[state.textStyle]` for title/body. Guest nickname is "神秘特工".
+**`App.triggerAlarm(reminder)`**: dual-channel alert — (1) native notification via GuardianDesktop IPC or `new Notification()` in browser (respects `desktop_notify_enabled`); (2) webhook push via `/api/notify/webhook` (registered users only). Uses `TextStyles[state.textStyle]` for title/body. Guest nickname is "神秘特工".
 
 **`App.completeTask(type, btn, fromPet)`**: posts to `/api/complete`, resets `lastNotified`, updates pet state, plays `eat.wav` on DRINK, calls `/api/pet/feed` if `fromPet=true`, sends webhook praise message (registered users only), then calls `refreshDashboard()`.
 
 **`App.refreshDashboard()`**: parallel `Promise.all` fetching stats, leaderboard, achievements, streak, heatmap — then renders all UI components and syncs pet state.
 
-**`App._updateElectronBadge()`**: shows/hides `#electron-sync-bar` sidebar element. Green "已同步" if registered, yellow "匿名模式" if guest. Checked 1.2 s after init to allow `isElectronApp` injection time.
+**`App._updateGuardianDesktopBadge()`**: shows/hides `#electron-sync-bar` sidebar element. Green "已同步" if registered, yellow "匿名模式" if guest. Checked 1.2 s after init to allow `isGuardianDesktopApp` injection time.
 
 **MySQL 8 window functions** are used in `/api/adaptive-schedule` (LAG over partitioned reminder logs) — do not downgrade MySQL below 8.0.
 
@@ -243,10 +243,10 @@ Called on every `/api/complete`. All awards use `INSERT IGNORE` (safe to call re
 
 ## Desktop Sync Rule
 
-> After completing any web page feature, you **must** verify whether the Electron desktop shell needs to be updated. Specifically:
-> - If the feature uses new `localStorage` keys as a bridge (e.g., for the 🏝️ widget), update `widget.html` and `electron/main.js` accordingly.
-> - If the feature adds new tray menu entries, IPC channels, or window behaviors, update `electron/main.js`.
-> - If the feature introduces new global shortcuts, register them in `electron/main.js` via `globalShortcut.register`.
+> After completing any web page feature, you **must** verify whether the GuardianDesktop desktop shell needs to be updated. Specifically:
+> - If the feature uses new `localStorage` keys as a bridge (e.g., for the 🏝️ widget), update `widget.html` and `GuardianDesktop/main.js` accordingly.
+> - If the feature adds new tray menu entries, IPC channels, or window behaviors, update `GuardianDesktop/main.js`.
+> - If the feature introduces new global shortcuts, register them in `GuardianDesktop/main.js` via `globalShortcut.register`.
 > - The desktop shell must always reflect the same feature set as the web UI.
 
 ## Linux Deployment
@@ -270,5 +270,5 @@ sh/rollback.sh   # reverts to last backup in bak/
 - **`/api/configs` returns `quietEnabled/quietStart/quietEnd`**: these come from `t_user` columns. Frontend syncs them into `App.state.quietHours` and localStorage on every `loadData()`.
 - **Pet feeding flow**: UI button → `App.completeTask('DRINK', null, true)` → `API.post('/api/pet/feed')` → awards `PET_LOVER` at 5 feeds. The DRINK log is also written, so it counts toward `WATER_BUFFALO`/`HYDRO_CHAMPION`.
 - **Workout SVG assets**: located at `/workout/*.svg`. Available files: `neck.svg`, `chest.svg`, `squat.svg`, `shoulder.svg`, `wrist.svg`, `eyes.svg`, `back.svg`.
-- **`App.init()` startup sequence**: applyTheme → setupPWA → restore meeting → detect Electron (with 1.2 s delay) → show welcome modal OR loadData → startGlobalBackgroundTimer → checkDailyBrief → Weather.init() → Pet.startAnimation().
+- **`App.init()` startup sequence**: applyTheme → setupPWA → restore meeting → detect GuardianDesktop (with 1.2 s delay) → show welcome modal OR loadData → startGlobalBackgroundTimer → checkDailyBrief → Weather.init() → Pet.startAnimation().
 - **`App.startNewIdentity()`**: clears `health_guardian_key`, `hg_cached_configs`, `hg_cached_username` from localStorage, then reloads. UI preferences (theme, text style) are preserved.

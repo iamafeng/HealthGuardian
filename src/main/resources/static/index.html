@@ -195,14 +195,17 @@
                     <button id="pomo-stop" class="btn-action" style="background:var(--accent)" onclick="App.stopPomo()"
                         disabled>中断</button>
                 </div>
-                <div style="margin-top:14px; display:flex; gap:6px; justify-content:center; flex-wrap:wrap">
-                    <button class="ambient-btn" data-sound="white" onclick="AmbientSound.play('white')">🌧️ 轻柔雨声</button>
-                    <button class="ambient-btn" data-sound="rain" onclick="AmbientSound.play('rain')">🌿 森林雨鸣</button>
-                    <button class="ambient-btn" data-sound="cafe" onclick="AmbientSound.play('cafe')">🐦 清晨鸟鸣</button>
-                    <button class="ambient-btn" onclick="AmbientSound.stop()">🔇 静音</button>
-                    <button class="ambient-btn" id="flow-toggle-btn" onclick="AmbientSound.toggleFlow()" title="心流模式：CV 实时感知专注度，自动调节音量并混入 10Hz Alpha 脑波">🧠 心流</button>
-                </div>
-                <!-- 🧠 心流动态音频指示器 -->
+                <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px; align-items:center">
+                    <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap">
+                        <button class="ambient-btn" data-sound="white" onclick="AmbientSound.play('white')">🌧️ 轻柔雨声</button>
+                        <button class="ambient-btn" data-sound="rain" onclick="AmbientSound.play('rain')">🌿 森林雨鸣</button>
+                        <button class="ambient-btn" data-sound="cafe" onclick="AmbientSound.play('cafe')">🐦 清晨鸟鸣</button>
+                    </div>
+                    <div style="display:flex; gap:6px; justify-content:center; align-items:center">
+                        <button class="ambient-btn" id="flow-toggle-btn" onclick="AmbientSound.toggleFlow()" title="心流模式：CV 实时感知专注度，自动调节音量并混入 10Hz Alpha 脑波">🧠 心流动态音频</button>
+                        <button class="ambient-btn" onclick="AmbientSound.stop()" style="border-color:var(--accent); color:var(--accent)">🔇 静音</button>
+                    </div>
+                </div>                <!-- 🧠 心流动态音频指示器 -->
                 <div id="flow-indicator" style="display:none; margin-top:10px; padding:8px 12px; background:rgba(0,242,254,0.05); border-radius:10px; border:1px solid rgba(0,242,254,0.12)">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
                         <span style="font-size:0.6rem; color:var(--text-dim); font-weight:700; letter-spacing:0.5px">🧠 心流动态音频</span>
@@ -323,6 +326,27 @@
                     <div id="stat-focus" class="stat-value" style="color:var(--gold)">0m</div>
                 </div>
             </div>
+
+            <!-- 📋 每日任务侧边栏 -->
+            <div class="task-sidebar">
+                <h2 style="margin-bottom:15px">📋 今日目标进度</h2>
+                <div id="daily-tasks-container">
+                    <!-- 动态生成任务项 -->
+                    <div class="task-item">
+                        <div class="task-header"><span>💧 饮水打卡</span><span id="task-drink-val">0 / 8</span></div>
+                        <div class="task-progress-bg"><div id="task-drink-bar" class="task-progress-fill" style="width:0%"></div></div>
+                    </div>
+                    <div class="task-item">
+                        <div class="task-header"><span>🧘 调息拉伸</span><span id="task-rest-val">0 / 4</span></div>
+                        <div class="task-progress-bg"><div id="task-rest-bar" class="task-progress-fill" style="width:0%"></div></div>
+                    </div>
+                    <div class="task-item">
+                        <div class="task-header"><span>🧠 专注协议</span><span id="task-pomo-val">0 / 4</span></div>
+                        <div class="task-progress-bg"><div id="task-pomo-bar" class="task-progress-fill" style="width:0%"></div></div>
+                    </div>
+                </div>
+            </div>
+
             <div style="height:180px; margin-bottom:30px"><canvas id="weeklyChart"></canvas></div>
             <div style="height:180px"><canvas id="hourlyChart"></canvas></div>
 
@@ -636,9 +660,9 @@
                     <div id="pet-stat-rest" style="font-size:1.3rem;font-weight:800;color:var(--secondary);font-family:var(--font-mono)">0</div>
                     <div style="color:var(--text-dim)">今日调息 🧘</div>
                 </div>
-                <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:8px">
+                <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:8px;cursor:pointer" onclick="Pet.openCoinLog()" title="查看收支明细">
                     <div class="pet-coins-display" style="font-size:1.1rem;font-weight:800;color:var(--gold);font-family:var(--font-mono)">🐟 0</div>
-                    <div style="color:var(--text-dim)">小鱼干币</div>
+                    <div style="color:var(--text-dim)">小鱼干币 📋</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -659,6 +683,15 @@
             </div>
             <div id="pet-shop-list" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px"></div>
             <button class="btn-outline" onclick="UI.modal.hide('pet-shop-modal')">关闭</button>
+        </div>
+    </div>
+
+    <!-- 🐟 小鱼干币收支明细 -->
+    <div id="coin-log-modal" class="modal-overlay">
+        <div class="modal-card" style="max-width:420px">
+            <h2>🐟 小鱼干币收支明细</h2>
+            <div id="coin-log-list" style="max-height:360px;overflow-y:auto;margin-bottom:16px"></div>
+            <button class="btn-outline" onclick="UI.modal.hide('coin-log-modal')">关闭</button>
         </div>
     </div>
 

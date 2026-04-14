@@ -24,10 +24,34 @@ const CV = {
         if(this.canvas) {
             this.ctx = this.canvas.getContext('2d');
         }
+
+        // ── 检查环境安全 ──────────────────────────────────────
+        const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const hasMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        
+        if (!isSecure) {
+            console.warn("CV Module disabled: Insecure context. Camera requires HTTPS or localhost.");
+            const cvContainer = document.querySelector('.cv-container');
+            if (cvContainer) cvContainer.style.display = 'none';
+            return;
+        }
+
+        if (!hasMedia) {
+             const overlay = document.getElementById('cv-overlay-text');
+             if (overlay) overlay.innerText = "浏览器不支持摄像头 ⚠️";
+             const startBtn = document.getElementById('cv-start');
+             if (startBtn) startBtn.disabled = true;
+        }
     },
 
     async start() {
         if (!this.video || !this.canvas) return;
+        
+        // ── 前置检查：再次确认环境 ──────────────────────────────────────
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            UI.toast('🚫 浏览器环境不支持摄像头访问', 'error');
+            return;
+        }
 
         // ── 前置检查：强制重置状态 ──────────────────────────────────────
         if (this.isDetecting) this.stop();

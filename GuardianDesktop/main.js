@@ -136,10 +136,10 @@ function createWindow() {
   });
 }
 
-// ─── 向渲染进程注入 Electron 环境标识 ─────────────────────────────────────
+// ─── 向渲染进程注入 GuardianDesktop 环境标识 ─────────────────────────────────────
 function injectElectronFlag(win) {
   if (!win || win.isDestroyed()) return;
-  win.webContents.executeJavaScript('window.isElectronApp = true;').catch(() => {});
+  win.webContents.executeJavaScript('window.isGuardianDesktopApp = true;').catch(() => {});
 }
 
 // ─── 🏝️ 健康灵动岛悬浮窗 ──────────────────────────────────────────────────

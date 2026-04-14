@@ -58,6 +58,8 @@ public class ReminderController {
             {"PRODUCTIVITY_BEAST", "效率怪兽",     "累计完成 10 次专注协议",                       "0"},
             {"STRETCH_EXPERT",     "拉伸达人",     "累计完成 20 次调息指引",                       "0"},
             {"COMMUNITY_STAR",     "系统公民",     "成功建立加密账号身份",                         "0"},
+            {"DAILY_STRETCH_GOAL", "拉伸达人",     "单日完成 4 次调息指引",                        "0"},
+            {"DAILY_FOCUS_GOAL",   "专注先锋",     "单日完成 4 次专注协议",                        "0"},
             // 隐藏成就
             {"MIDNIGHT_GHOST",     "午夜幽灵",     "🔒 隐藏成就：在深夜 00:00-04:00 完成打卡",     "1"},
             {"HYDRO_CHAMPION",     "补水冠军",     "🔒 隐藏成就：单日补给达到 10 次",             "1"},
@@ -100,6 +102,76 @@ public class ReminderController {
             jdbcTemplate.execute(
                 "ALTER TABLE t_user ADD COLUMN IF NOT EXISTS unlocked_cats TEXT DEFAULT 'cat_OrangeTabby' COMMENT '已解锁猫咪'");
         } catch (Exception ignored) {}
+
+        // 创建 t_coin_log 表（小鱼干币收支明细）
+        try {
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS t_coin_log (" +
+                "  id BIGINT AUTO_INCREMENT PRIMARY KEY," +
+                "  secret_key VARCHAR(255) NOT NULL," +
+                "  coin_type VARCHAR(50) NOT NULL," +
+                "  amount INT NOT NULL," +
+                "  log_date DATE," +
+                "  created_at DATETIME DEFAULT NOW()," +
+                "  UNIQUE KEY uk_idempotent (secret_key, log_date, coin_type)" +
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 发放收入类型小鱼干币（含每日上限检查 + 幂等累加）
+     * 访客（t_user 无记录）静默跳过，不抛异常
+     */
+    private void recordIncome(String secretKey, String coinType, int amount, int dailyCap) {
+        try {
+            // 1. 访客检查
+            Integer userExists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_user WHERE secret_key=?", Integer.class, secretKey);
+            if (userExists == null || userExists == 0) return;
+
+            // 2. 查询当天已累计
+            Integer todayTotal = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(amount), 0) FROM t_coin_log WHERE secret_key=? AND coin_type=? AND log_date=CURDATE()",
+                Integer.class, secretKey, coinType);
+            if (todayTotal == null) todayTotal = 0;
+
+            // 3. 上限检查
+            if (todayTotal >= dailyCap) return;
+
+            // 4. 截断到剩余额度
+            int actualAmount = Math.min(amount, dailyCap - todayTotal);
+
+            // 5. 幂等写入（INSERT 或累加）
+            jdbcTemplate.update(
+                "INSERT INTO t_coin_log (secret_key, coin_type, amount, log_date) VALUES (?, ?, ?, CURDATE()) " +
+                "ON DUPLICATE KEY UPDATE amount = amount + ?",
+                secretKey, coinType, actualAmount, actualAmount);
+
+            // 6. 同步更新余额
+            jdbcTemplate.update(
+                "UPDATE t_user SET coins = coins + ? WHERE secret_key=?",
+                actualAmount, secretKey);
+        } catch (Exception e) {
+            // 静默处理，不影响主流程
+        }
+    }
+
+    /**
+     * 记录消费类型小鱼干币（log_date=NULL 绕过唯一约束，允许同一天多次消费）
+     */
+    private void recordExpense(String secretKey, String coinType, int amount) {
+        try {
+            // log_date = NULL，绕过 uk_idempotent 唯一约束
+            jdbcTemplate.update(
+                "INSERT INTO t_coin_log (secret_key, coin_type, amount, log_date) VALUES (?, ?, ?, NULL)",
+                secretKey, coinType, -amount);
+            jdbcTemplate.update(
+                "UPDATE t_user SET coins = coins - ? WHERE secret_key=?",
+                amount, secretKey);
+        } catch (Exception e) {
+            // 静默处理
+        }
     }
 
     private String hashPassword(String password) {
@@ -194,6 +266,11 @@ public class ReminderController {
     public String complete(@RequestParam String type, @RequestParam String secretKey) {
         jdbcTemplate.update("INSERT INTO t_reminder_log (remind_type, secret_key) VALUES (?, ?)", type, secretKey);
         checkAchievements(secretKey, type);
+        if ("DRINK".equals(type)) {
+            recordIncome(secretKey, "DRINK_REWARD", 2, 16);
+        } else if ("SEDENTARY".equals(type)) {
+            recordIncome(secretKey, "SEDENTARY_REWARD", 3, 9);
+        }
         return "OK";
     }
 
@@ -226,9 +303,15 @@ public class ReminderController {
         }
         if ("SEDENTARY".equals(type)) {
             Integer c = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND remind_type='SEDENTARY' AND DATE(completed_at)=CURDATE()", Integer.class,
+                    secretKey);
+            if (c != null && c >= 4)
+                award(secretKey, "DAILY_STRETCH_GOAL");
+
+            Integer total = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM t_reminder_log WHERE secret_key=? AND remind_type='SEDENTARY'", Integer.class,
                     secretKey);
-            if (c != null && c >= 20)
+            if (total != null && total >= 20)
                 award(secretKey, "STRETCH_EXPERT");
         }
         Integer days = jdbcTemplate.queryForObject(
@@ -239,8 +322,11 @@ public class ReminderController {
     }
 
     private void award(String secretKey, String code) {
-        jdbcTemplate.update("INSERT IGNORE INTO t_user_achievement (secret_key, achievement_code) VALUES (?, ?)",
+        int rows = jdbcTemplate.update("INSERT IGNORE INTO t_user_achievement (secret_key, achievement_code) VALUES (?, ?)",
                 secretKey, code);
+        if (rows > 0) {
+            recordIncome(secretKey, "ACHIEVEMENT_REWARD", 30, 30);
+        }
     }
 
     @GetMapping("/stats")
@@ -276,6 +362,12 @@ public class ReminderController {
                 "SELECT IFNULL(SUM(duration_minutes), 0) FROM t_pomodoro_log WHERE secret_key = ?", Long.class,
                 secretKey);
         result.put("totalFocusTime", totalPomo);
+
+        // 今日番茄钟完成次数（用于每日任务进度）
+        Long todayPomo = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_pomodoro_log WHERE secret_key = ? AND DATE(completed_at) = CURDATE()",
+                Long.class, secretKey);
+        result.put("todayPomoCount", todayPomo != null ? todayPomo : 0);
         return result;
     }
 
@@ -507,11 +599,16 @@ public class ReminderController {
             award(secretKey, "FOCUS_MASTER");
         if (c != null && c >= 10)
             award(secretKey, "PRODUCTIVITY_BEAST");
-        // 发放小鱼干币（仅注册用户，忽略访客）
-        try {
-            jdbcTemplate.update(
-                "UPDATE t_user SET coins = coins + 10 WHERE secret_key=?", secretKey);
-        } catch (Exception ignored) {}
+
+        // 今日专注成就
+        Integer todayCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_pomodoro_log WHERE secret_key=? AND DATE(completed_at)=CURDATE()",
+                Integer.class, secretKey);
+        if (todayCount != null && todayCount >= 4)
+            award(secretKey, "DAILY_FOCUS_GOAL");
+
+        // 发放小鱼干币（含每日上限检查 + 幂等累加）
+        recordIncome(secretKey, "POMODORO_REWARD", 15, 60);
         return "OK";
     }
 
@@ -708,6 +805,22 @@ public class ReminderController {
         return "OK";
     }
 
+    // ─── 🌬️ 呼吸训练完成奖励 ────────────────────────────────────────────────────
+    @PostMapping("/breathing/complete")
+    public String completeBreathing(@RequestParam String secretKey) {
+        recordIncome(secretKey, "BREATHING_REWARD", 5, 10);
+        return "OK";
+    }
+
+    // ─── 🐟 小鱼干币收支明细 ────────────────────────────────────────────────────
+    @GetMapping("/coin-log")
+    public List<Map<String, Object>> getCoinLog(@RequestParam String secretKey) {
+        return jdbcTemplate.queryForList(
+            "SELECT coin_type, amount, log_date, created_at FROM t_coin_log " +
+            "WHERE secret_key=? ORDER BY created_at DESC LIMIT 30",
+            secretKey);
+    }
+
     // ─── ⚡ 智能提醒自适应 ────────────────────────────────────────────────────────
     @GetMapping("/adaptive-schedule")
     public Map<String, Object> getAdaptiveSchedule(@RequestParam String secretKey) {
@@ -768,7 +881,9 @@ public class ReminderController {
         int updated = jdbcTemplate.update(
             "UPDATE t_user SET coins = coins + ? WHERE secret_key=?", amount, secretKey);
         if (updated == 0) {
-            result.put("success", false); result.put("msg", "用户不存在（访客不支持）");
+            // 访客模式：本地在 js 维护 coins，后端静默返回成功以防报错
+            result.put("success", true);
+            result.put("msg", "访客模式（本地存储）");
             return result;
         }
         Integer newCoins = jdbcTemplate.queryForObject(
@@ -809,6 +924,7 @@ public class ReminderController {
         jdbcTemplate.update(
             "UPDATE t_user SET coins = coins - ?, unlocked_cats = ? WHERE secret_key=?",
             price, newUnlocked, secretKey);
+        recordExpense(secretKey, "BUY_CAT", price);
         result.put("success", true);
         result.put("coins", coins - price);
         result.put("unlockedCats", newUnlocked);

@@ -65,7 +65,6 @@ captures/
 /.kiro/steering/tech.md
 /skills/
 
-# Electron 构建产物（通过 GitHub Releases 分发，不进 git）
-electron/dist/
-electron/node_modules/
-
+# GuardianDesktop 构建产物（通过 GitHub Releases 分发，不进 git）
+GuardianDesktop/dist/
+GuardianDesktop/node_modules/

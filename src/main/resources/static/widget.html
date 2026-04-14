@@ -137,6 +137,10 @@ html, body { background:transparent; overflow:visible; }
         <div class="stat-val" id="w-rest">0</div>
         <div class="stat-lbl">🧘 今日调息</div>
       </div>
+      <div class="stat" style="grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 2px; padding-top: 6px;">
+        <div class="stat-val" id="w-coins" style="color:var(--gold)">0</div>
+        <div class="stat-lbl">🐟 小鱼干币</div>
+      </div>
     </div>
     <div class="pomo-bar"><div class="pomo-fill" id="w-pomo-fill"></div></div>
     <div class="status-row">
@@ -269,15 +273,17 @@ async function refreshStats() {
   secretKey = secretKey || localStorage.getItem('health_guardian_key');
   if (!secretKey) return;
   try {
-    const [stats, streak] = await Promise.all([
+    const [stats, streak, pet] = await Promise.all([
       fetch(`/api/stats?secretKey=${secretKey}`).then(r => r.json()),
       fetch(`/api/streak?secretKey=${secretKey}`).then(r => r.json()),
+      fetch(`/api/pet/coins?secretKey=${secretKey}`).then(r => r.json()),
     ]);
     document.getElementById('w-streak').textContent = streak.streak ?? '—';
     const drink = (stats.today||[]).find(i=>i.remind_type==='DRINK')?.count||0;
     const rest  = (stats.today||[]).find(i=>i.remind_type==='SEDENTARY')?.count||0;
     document.getElementById('w-drink').textContent = drink;
     document.getElementById('w-rest').textContent  = rest;
+    document.getElementById('w-coins').textContent = pet.coins ?? 0;
     const hp = Math.min(100, 20 + (drink + rest) * 8);
     const fill = document.getElementById('hp-fill');
     if (fill) fill.style.width = hp + '%';

@@ -1,6 +1,6 @@
 /**
  * make-icon.js — download the app PNG and produce a multi-size favicon.ico
- * Run once: node electron/make-icon.js
+ * Run once: node GuardianDesktop/make-icon.js
  */
 const https = require('https');
 const fs    = require('fs');

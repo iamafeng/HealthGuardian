@@ -2,6 +2,16 @@
  * HealthGuardian V3.5 - 核心逻辑控制器 (全能增强版)
  */
 
+// ─── 小鱼干币收支类型标签 ──────────────────────────────────────────────────────
+const COIN_TYPE_LABELS = {
+    POMODORO_REWARD:    '番茄钟奖励',
+    DRINK_REWARD:       '补水奖励',
+    SEDENTARY_REWARD:   '拉伸奖励',
+    BREATHING_REWARD:   '呼吸训练奖励',
+    ACHIEVEMENT_REWARD: '成就奖励',
+    BUY_CAT:            '购买猫咪',
+};
+
 // ─── 主题预设 ─────────────────────────────────────────────────────────────────
 const Themes = {
     cyber: {
@@ -81,7 +91,8 @@ const App = {
                 'EARLY_BIRD': '🐦', 'NIGHT_OWL': '🦉', 'WATER_BUFFALO': '💧',
                 'PERSISTENCE': '♾️', 'FOCUS_MASTER': '🧠', 'PRODUCTIVITY_BEAST': '🐯',
                 'STRETCH_EXPERT': '🤸', 'COMMUNITY_STAR': '🎖️',
-                'MIDNIGHT_GHOST': '👻', 'HYDRO_CHAMPION': '🏆', 'DAWN_WARRIOR': '🌅', 'PET_LOVER': '🐾'
+                'MIDNIGHT_GHOST': '👻', 'HYDRO_CHAMPION': '🏆', 'DAWN_WARRIOR': '🌅', 'PET_LOVER': '🐾',
+                'DAILY_STRETCH_GOAL': '🧘', 'DAILY_FOCUS_GOAL': '⚡'
             }
         },
         reminders: [],
@@ -106,14 +117,14 @@ const App = {
             if (t > new Date()) { this.state.meetingEndAt = t; this._updateMeetingBar(); }
             else { localStorage.removeItem('hg_meeting_end'); localStorage.removeItem('hg_meeting_title'); }
         }
-        // 检测 Electron 桌面端环境
-        this._isElectron = !!(typeof window !== 'undefined' &&
+        // 检测 GuardianDesktop 桌面端环境
+        this._isGuardianDesktop = !!(typeof window !== 'undefined' &&
             ((typeof process !== 'undefined' && process.versions && process.versions.electron) ||
-             window.isElectronApp));
-        // 延迟检测（因为 isElectronApp 是页面加载后注入的）
+             window.isGuardianDesktopApp));
+        // 延迟检测（因为 isGuardianDesktopApp 是页面加载后注入的）
         setTimeout(() => {
-            this._isElectron = this._isElectron || !!window.isElectronApp;
-            this._updateElectronBadge();
+            this._isGuardianDesktop = this._isGuardianDesktop || !!window.isGuardianDesktopApp;
+            this._updateGuardianDesktopBadge();
         }, 1200);
         if (!this.state.secretKey) {
             UI.modal.show('welcome-modal');
@@ -127,16 +138,16 @@ const App = {
         Pet.startAnimation();
     },
 
-    // 更新 Electron 桌面端同步提示
-    _updateElectronBadge() {
-        const badge = document.getElementById('electron-sync-bar');
+    // 更新 GuardianDesktop 桌面端同步提示
+    _updateGuardianDesktopBadge() {
+        const badge = document.getElementById('guardian-desktop-sync-bar');
         if (!badge) return;
-        if (this._isElectron) {
+        if (this._isGuardianDesktop) {
             badge.style.display = 'block';
             if (this.state.isRegistered) {
-                badge.innerHTML = `<span style="color:var(--success)">✅ 桌面版 · 账号已同步</span><br><span style="font-size:0.6rem;opacity:0.6">网页端用相同账号登录即可同步数据</span>`;
+                badge.innerHTML = `<span style="color:var(--success)">✅ GuardianDesktop · 账号已同步</span><br><span style="font-size:0.6rem;opacity:0.6">网页端用相同账号登录即可同步数据</span>`;
             } else {
-                badge.innerHTML = `<span style="color:var(--warning)">🖥️ 桌面版 · 当前为匿名模式</span><br><span style="font-size:0.6rem;opacity:0.7">点击 <strong>👤 身份同步</strong> 创建账号，即可在网页端同步所有数据</span>`;
+                badge.innerHTML = `<span style="color:var(--warning)">🖥️ GuardianDesktop · 当前为匿名模式</span><br><span style="font-size:0.6rem;opacity:0.7">点击 <strong>👤 身份同步</strong> 创建账号，即可在网页端同步所有数据</span>`;
             }
         } else {
             badge.style.display = 'none';
@@ -148,7 +159,7 @@ const App = {
             window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
         }
         // 桌面端：权限由 Electron session 自动授予，无需弹框；浏览器端才需要主动请求
-        if (!window.isElectronApp && Notification.permission === 'default') {
+        if (!window.isGuardianDesktopApp && Notification.permission === 'default') {
             Notification.requestPermission();
         }
     },
@@ -203,7 +214,7 @@ const App = {
         // 1. 桌面通知
         const desktopEnabled = localStorage.getItem('desktop_notify_enabled') !== 'false';
         if (desktopEnabled) {
-            if (window.isElectronApp) {
+            if (window.isGuardianDesktopApp) {
                 // Electron 桌面端：通过 IPC 调用主进程原生通知，无需任何权限弹窗
                 try {
                     const { ipcRenderer } = window.require('electron');
@@ -298,6 +309,7 @@ const App = {
     },
 
     async refreshDashboard() {
+        this._isRefreshing = true;
         try {
             const [stats, leaderboard, achievements, streak, heatmap] = await Promise.all([
                 API.get('/api/stats', { secretKey: this.state.secretKey }),
@@ -308,10 +320,12 @@ const App = {
             ]);
             UI.renderStats(stats);
             UI.renderLeaderboard(leaderboard);
-            UI.renderAchievements(achievements);
             UI.renderStreak(streak);
             UI.renderHeatmap(heatmap);
+            UI.renderDailyTasks(stats);
+            // 必须先更新 state，renderAchievements 才能正确对比"新解锁"
             this.state.achievementsData = achievements;
+            UI.renderAchievements(achievements);
             // 同步宠物状态
             const drinkCount = stats.today.find(i => i.remind_type === 'DRINK')?.count || 0;
             const restCount = stats.today.find(i => i.remind_type === 'SEDENTARY')?.count || 0;
@@ -319,6 +333,7 @@ const App = {
             this.state.pet.restToday = Number(restCount);
             Pet.update(this.state.pet.drinkToday, this.state.pet.restToday);
         } catch (e) { }
+        this._isRefreshing = false;
     },
 
     async completeTask(type, btnElement, fromPet = false) {
@@ -332,8 +347,12 @@ const App = {
             this.state.pet.drinkToday++; 
             if (fromPet) API.post('/api/pet/feed', { secretKey: this.state.secretKey }); 
             try { new Audio('/pet/audio/eat.wav').play(); } catch(e){}
+            this.earnCoins(2); // 补水奖励 2 币
         }
-        if (type === 'SEDENTARY') this.state.pet.restToday++;
+        if (type === 'SEDENTARY') {
+            this.state.pet.restToday++;
+            this.earnCoins(5); // 拉伸奖励 5 币
+        }
         Pet.update(this.state.pet.drinkToday, this.state.pet.restToday);
 
         const isGuest = this.state.username.startsWith('访客_') || this.state.username === '匿名用户';
@@ -351,6 +370,19 @@ const App = {
             });
         }
         this.refreshDashboard();
+    },
+
+    async earnCoins(amount) {
+        if (!this.state.isRegistered) {
+            this.state.pet.coins += amount;
+            Pet.updateCoinsDisplay();
+            return;
+        }
+        const res = await API.post('/api/pet/earn-coins', { secretKey: this.state.secretKey, amount });
+        if (res.success) {
+            this.state.pet.coins = res.coins || (this.state.pet.coins + amount);
+            Pet.updateCoinsDisplay();
+        }
     },
 
     tryComplete(type, btn) {
@@ -427,7 +459,7 @@ const App = {
 
     async requestBrowserNotify() {
         // 桌面端：原生通知无需授权，直接测试
-        if (window.isElectronApp) {
+        if (window.isGuardianDesktopApp) {
             try {
                 const { ipcRenderer } = window.require('electron');
                 ipcRenderer.send('show-notification', { title: 'HealthGuardian', body: '✅ 系统通知测试成功！提醒功能已正常工作。' });
@@ -817,6 +849,17 @@ const UI = {
         setTimeout(() => el.remove(), 3000);
     },
 
+    notify(title, body) {
+        if (window.isGuardianDesktopApp) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('show-notification', { title, body });
+            } catch (_) { }
+        } else if (Notification.permission === 'granted') {
+            new Notification(title, { body, icon: '/favicon.ico' });
+        }
+    },
+
     renderUser(data) {
         const el = document.getElementById('user-display');
         el.innerHTML = (data.username && !data.username.startsWith('访客_'))
@@ -843,7 +886,7 @@ const UI = {
         const status = document.getElementById('notify-perm-status');
         if (!btn) return;
         // 桌面端使用原生通知，无需浏览器权限
-        if (window.isElectronApp) {
+        if (window.isGuardianDesktopApp) {
             btn.innerText = '✅ 桌面端系统通知已开启（原生）'; btn.disabled = true;
             if (status) status.innerText = '提醒弹窗由操作系统直接推送，无需额外授权。';
             return;
@@ -903,16 +946,97 @@ const UI = {
             </div>`).join('');
     },
 
+    renderHeatmap(data) {
+        const container = document.getElementById('heatmap-container');
+        if (!container) return;
+        const today = new Date();
+        const days = 90;
+        const startDate = new Date();
+        startDate.setDate(today.getDate() - days + 1);
+        const dayOfWeek = startDate.getDay();
+        startDate.setDate(startDate.getDate() - dayOfWeek);
+        const totalCells = days + dayOfWeek;
+        let html = '<div class="heatmap-grid">';
+        const dataMap = {};
+        data.forEach(d => dataMap[d.date.split('T')[0]] = d.count);
+        for (let i = 0; i < totalCells; i++) {
+            const cur = new Date(startDate);
+            cur.setDate(startDate.getDate() + i);
+            const dateStr = cur.toISOString().split('T')[0];
+            const count = dataMap[dateStr] || 0;
+            const level = count === 0 ? 0 : Math.min(4, Math.ceil(count / 2));
+            const isFuture = cur > today;
+            const cellClass = isFuture ? 'heatmap-cell empty' : `heatmap-cell level-${level}`;
+            const tip = isFuture ? '' : `${dateStr}: ${count} 次打卡`;
+            html += `<div class="${cellClass}" title="${tip}"></div>`;
+        }
+        html += '</div>';
+        html += `<div class="heatmap-legend"><span>少</span><div class="heatmap-cell"></div><div class="heatmap-cell level-1"></div><div class="heatmap-cell level-2"></div><div class="heatmap-cell level-3"></div><div class="heatmap-cell level-4"></div><span>多</span></div>`;
+        container.innerHTML = html;
+    },
+
+    renderDailyTasks(stats) {
+        const goals = { DRINK: 8, SEDENTARY: 4, POMO: 4 };
+        const counts = {
+            DRINK: stats.today.find(i => i.remind_type === 'DRINK')?.count || 0,
+            SEDENTARY: stats.today.find(i => i.remind_type === 'SEDENTARY')?.count || 0,
+            POMO: Number(stats.todayPomoCount || 0)
+        };
+
+        const updateTask = (id, current, goal, type) => {
+            const valEl = document.getElementById(`task-${id}-val`);
+            const barEl = document.getElementById(`task-${id}-bar`);
+            if (valEl) valEl.innerText = `${current} / ${goal}`;
+            
+            if (barEl) {
+                const percent = Math.min(100, (current / goal) * 100);
+                barEl.style.width = percent + '%';
+                
+                // 🏆 目标达成瞬间触发通知
+                if (current >= goal && !barEl.classList.contains('done')) {
+                    barEl.classList.add('done');
+                    // 仅在当前操作导致达成时（通过 refreshDashboard 触发）提示
+                    // 注意：后端 award 逻辑会自动处理金币，此处仅做 UI 提示
+                    if (App._isRefreshing) {
+                         // 避免刷新页面时重复提示
+                    } else {
+                         UI.toast(`🏆 达成今日${id === 'drink' ? '饮水' : '调息'}目标！`, 'success');
+                         UI.notify('目标达成！', `恭喜！你已达成今日${id === 'drink' ? '饮水' : '调息'}目标！🐟+10`);
+                         Pet.say(`主人太棒了！目标达成！🐟✨`);
+                    }
+                } else if (current >= goal) {
+                    barEl.classList.add('done');
+                }
+            }
+        };
+
+        updateTask('drink', counts.DRINK, goals.DRINK, 'DRINK');
+        updateTask('rest', counts.SEDENTARY, goals.SEDENTARY, 'SEDENTARY');
+        updateTask('pomo', counts.POMO, goals.POMO, 'POMO');
+    },
+
     renderAchievements(data) {
         const container = document.getElementById('achievements-container');
-        const prevAchieved = new Set((App.state.achievementsData || []).filter(a => a.is_achieved).map(a => a.code));
+        if (!container) return;
+        const prevAchieved = new Set((App.state.achievementsData || []).filter(a => a.is_achieved == 1).map(a => a.code));
+        // 首次加载时 prevAchieved 为空，不触发解锁通知（避免启动时刷屏）
+        const isFirstLoad = prevAchieved.size === 0 && (App.state.achievementsData || []).length === 0;
+        
         container.innerHTML = data.map(a => {
             const isHidden = a.is_hidden == 1;
             const isAchieved = a.is_achieved == 1;
             const emoji = App.state.meta.medalMap[a.code] || '🏅';
             const displayEmoji = isHidden && !isAchieved ? '🔒' : emoji;
             const displayName = isHidden && !isAchieved ? '???' : a.name;
-            const justUnlocked = isAchieved && !prevAchieved.has(a.code);
+            const justUnlocked = !isFirstLoad && isAchieved && !prevAchieved.has(a.code);
+
+            if (justUnlocked) {
+                UI.toast(`🎉 成就达成：${a.name}！获得 +30 🐟`, 'success');
+                UI.notify('成就解锁！', `🎉 恭喜解锁新成就：【${a.name}】！奖励 30 枚小鱼干币 🐟`);
+                Pet.say(`哇！解锁了新成就【${a.name}】，加餐加餐！🐟✨`);
+                try { new Audio('/pet/audio/coin.wav').play(); } catch(e){}
+            }
+
             return `
             <div class="ach-item ${isAchieved ? 'active' : ''} ${justUnlocked ? 'just-unlocked' : ''}" 
                  ${isHidden ? 'data-hidden="true"' : ''} 
@@ -1015,33 +1139,7 @@ const UI = {
             </div>`;
     },
 
-    renderHeatmap(data) {
-        const container = document.getElementById('heatmap-container');
-        if (!container) return;
-        const countMap = {};
-        (data || []).forEach(d => countMap[d.date] = d.count);
-        const today = new Date();
-        const cells = [];
-        // 回溯 91 天（13 完整周）
-        const startOffset = 90 + today.getDay(); // 从周日开始对齐
-        for (let i = startOffset; i >= 0; i--) {
-            const d = new Date(today); d.setDate(d.getDate() - i);
-            const key = d.toISOString().slice(0, 10);
-            cells.push({ date: key, count: countMap[key] || 0 });
-        }
-        const max = Math.max(...cells.map(c => c.count), 1);
-        let html = '<div class="heatmap-grid">';
-        cells.forEach(c => {
-            const lvl = c.count === 0 ? 0 : Math.min(4, Math.ceil(c.count / max * 4));
-            html += `<div class="heatmap-cell level-${lvl}" title="${c.date}: ${c.count} 次"></div>`;
-        });
-        html += '</div>';
-        html += `<div class="heatmap-legend"><span>少</span>
-            <div class="heatmap-cell level-0"></div><div class="heatmap-cell level-1"></div>
-            <div class="heatmap-cell level-2"></div><div class="heatmap-cell level-3"></div>
-            <div class="heatmap-cell level-4"></div><span>多</span></div>`;
-        container.innerHTML = html;
-    },
+
 
     renderCharts(data) {
         const opt = { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { display: false } } };
@@ -1104,7 +1202,27 @@ const UI = {
             if (App.state.workout.interval) clearInterval(App.state.workout.interval);
             App.state.workout.interval = setInterval(() => { t--; btn.innerText = `保持动作 (${t}s)`; if (t <= 0) { clearInterval(App.state.workout.interval); btn.disabled = false; btn.innerText = "完成打卡"; } }, 1000);
         }
-    }
+    },
+
+    renderCoinLog(logs) {
+        const el = document.getElementById('coin-log-list');
+        if (!el) return;
+        if (!logs || logs.length === 0) {
+            el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px">暂无收支记录</div>';
+            return;
+        }
+        el.innerHTML = logs.map(log => {
+            const label = COIN_TYPE_LABELS[log.coin_type] || log.coin_type;
+            const isIncome = log.amount > 0;
+            const amountStr = isIncome ? `+${log.amount}` : `${log.amount}`;
+            const dateStr = log.log_date ? String(log.log_date).substring(0, 10) : String(log.created_at).substring(0, 10);
+            return `<div class="coin-log-item">
+            <span class="coin-log-type">${label}</span>
+            <span class="coin-log-date">${dateStr}</span>
+            <span class="coin-log-amount ${isIncome ? 'coin-income' : 'coin-expense'}">${amountStr} 🐟</span>
+        </div>`;
+        }).join('');
+    },
 };
 
 const API = {
@@ -1318,6 +1436,18 @@ const Breathing = {
         document.getElementById('breath-timer').innerText = '✓';
         document.getElementById('breath-start-btn').disabled = false;
         UI.toast('🌬️ 4 轮呼吸训练完成，神经系统已校准', 'success');
+        // 呼吸训练完成奖励
+        if (App.state.isRegistered) {
+            API.post('/api/breathing/complete', { secretKey: App.state.secretKey }).then(res => {
+                if (res === 'OK' || res.success !== false) {
+                    App.state.pet.coins = (App.state.pet.coins || 0) + 5;
+                    Pet.updateCoinsDisplay();
+                    try { new Audio('/pet/audio/coin.wav').play(); } catch(e) {}
+                }
+            }).catch(() => {});
+        } else {
+            App.earnCoins(3);
+        }
     },
 
     stop() {
@@ -1852,6 +1982,20 @@ const Pet = {
     openShop() {
         UI.modal.show('pet-shop-modal');
         this._renderShop();
+    },
+
+    async openCoinLog() {
+        if (!App.state.isRegistered) {
+            UI.toast('查看收支明细需要先绑定账号', 'warning');
+            return;
+        }
+        try {
+            const logs = await API.get('/api/coin-log', { secretKey: App.state.secretKey });
+            UI.renderCoinLog(logs);
+            UI.modal.show('coin-log-modal');
+        } catch(e) {
+            UI.toast('加载收支明细失败', 'error');
+        }
     },
 
     _renderShop() {

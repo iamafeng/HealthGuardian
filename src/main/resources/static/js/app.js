@@ -277,7 +277,7 @@ const App = {
                 UI.renderUser(res);
                 UI.renderReminders(res.configs);
                 this.refreshDashboard();
-                this._updateElectronBadge();
+                this._updateGuardianDesktopBadge();
 
                 if (keyExpired) {
                     setTimeout(() => UI.toast('⚠️ 上次会话已失效，已建立新身份。如需恢复账号数据，请点击「身份同步」登录', 'warning'), 800);
